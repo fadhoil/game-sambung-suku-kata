@@ -1,0 +1,32 @@
+{
+  "project_type": "Next.js 14 (app router) client-side multiplayer word game 'Sambung Suku Kata' + Supabase (Postgres RPC + Realtime). All game state is authoritative in SQL RPC (SECURITY DEFINER); clients mutate only via supabase.rpc.",
+  "language": "TypeScript (React 18, 'use client' components), PostgreSQL/plpgsql for RPC.",
+  "build_system": "npm + Next.js 14.2.15. No monorepo. Root for all commands: d:\\ADO\\KiroAI\\game-apps (NOT d:\\ADO\\KiroAI).",
+  "test_framework": "None. No test runner configured. Verification is type-check + production build only.",
+  "build_command": "npx next build  (run from d:\\ADO\\KiroAI\\game-apps)",
+  "test_command": "npx tsc --noEmit -p tsconfig.json  (run from d:\\ADO\\KiroAI\\game-apps)",
+  "verification_instructions": "PowerShell echoes build output noisily, so redirect to a file and read the file. Run from d:\\ADO\\KiroAI\\game-apps: `npx tsc --noEmit -p tsconfig.json *> tsc.log` then read tsc.log (expect empty / exit 0). Then `npx next build *> build.log` then read build.log (expect 'Compiled successfully' / exit 0). Delete tsc.log and build.log afterward. Check $LASTEXITCODE for 0. SQL is NOT run against any database in this task — only authored. Do not run seed scripts or anything that writes to Supabase.",
+  "snapshot_or_generated_files": "null (no generated/checked-in build artifacts). .next/ is build output, gitignored.",
+  "environment_constraints": "Windows PowerShell. Never run scripts that write to Supabase production. SQL migrations are authored only, applied manually by the user in the Supabase SQL Editor later. functions.sql is re-run in full (all create-or-replace) so editing it directly is fine; schema changes go in a NEW migration-v9.sql (never edit v2..v8).",
+  "contribution_requirements": "Follow AGENTS.md: minimum sufficient context, minimal change, reuse existing patterns, do not refactor unrelated code. All RPC must `grant execute ... to anon, authenticated` following the pattern at the end of each SQL file. UI text in Indonesian, consistent with existing copy.",
+  "key_patterns": "Tailwind tokens: rounded-2xl/3xl, bg-white, bg-bg-end, text-ink, text-ink-soft, from-accent-from/to-accent-to, shadow-soft/shadow-soft-sm, animate-pop-in. Supabase client singleton in src/lib/supabaseClient.ts. Realtime room state via src/lib/useRoomRealtime.ts (postgres_changes). Presence via src/lib/usePresence.ts (channel `presence:CODE`). Game state reads via snapshot+subscribe. Sound FX are synthetic Web Audio tones in src/lib/sound.ts via the tone() helper; call unlockAudio() once after user interaction. RPC wrappers live in src/lib/gameActions.ts and are thin `supabase.rpc(name,{params})` calls. Admin PIN pattern: fn_admin_pin() returns '110966'; PIN-gated RPC verifies `if p_pin is distinct from public.fn_admin_pin() then raise exception 'BAD_PIN'`. Identity stored per-room in localStorage via src/lib/session.ts saveIdentity/getIdentity; device id via getDeviceId().",
+  "relevant_files": [
+    "supabase/functions.sql (fn_advance_turn, fn_pick_first_subject, join_room, kick_player, start_game, submit_word, resolve_timeout, fn_handle_timeout) — edit directly",
+    "supabase/migration-v9.sql (CREATE NEW) — is_admin column + list_active_rooms RPC",
+    "supabase/migration-v7.sql (PATTERN: fn_admin_pin, list_suggestions PIN-gated RPC)",
+    "supabase/schema.sql (players/rooms/teams/rounds columns, realtime publication)",
+    "src/lib/gameActions.ts (RPC wrappers — add joinRoom admin param + listActiveRooms)",
+    "src/lib/session.ts (AVATARS array, randomAvatar, saveIdentity, getDeviceId)",
+    "src/lib/sound.ts (tone() helper + sfx* exports — add emoji + start-game SFX)",
+    "src/lib/useRoomRealtime.ts (room realtime hook; detect playing transition for start sound)",
+    "src/lib/usePresence.ts (presence channel pattern for broadcast channels)",
+    "src/app/page.tsx (start page avatar picker uses AVATARS.slice(0,10))",
+    "src/app/room/[code]/page.tsx (lobby: players grid, kick, start, host controls)",
+    "src/app/room/[code]/play/page.tsx (play screen layout + input)",
+    "src/app/kamus-admin/page.tsx (admin PIN gate + suggestion review — add active-lobbies view)",
+    "src/components/PlayerChip.tsx (player row; add ready-state coloring + hide kick for admin)",
+    "src/components/RelaxNotice.tsx (remove '- sudah 2 kali gagal.' text)",
+    "src/types/game.ts (Player/Room/Team/Round interfaces — add is_admin to Player)"
+  ],
+  "directory_structure": "supabase/ holds schema.sql + functions.sql + migration-v2..v8.sql. src/app/ holds Next.js app-router pages (page.tsx = home, room/[code]/page.tsx = lobby, room/[code]/play/page.tsx = game, room/[code]/result/page.tsx = results, kamus-admin/page.tsx = admin). src/lib/ holds supabaseClient, gameActions (RPC wrappers), useRoomRealtime, usePresence, session, sound, dictionary, motion. src/components/ holds UI (PlayerChip, RelaxNotice, TimerRing, WordInput, WordChain, Countdown, TeamBuilder, etc). src/types/game.ts holds shared interfaces."
+}

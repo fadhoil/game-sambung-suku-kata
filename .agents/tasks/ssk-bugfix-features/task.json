@@ -1,0 +1,7 @@
+{
+  "task_id": "task-ssk-bugfix-features",
+  "task_description": "Fix the FFA/team turn-rotation bug where the last player is skipped per round, and add 7 features: top-of-screen play layout, admin 'active lobbies' RPC + admin join as Admin-SSK (uncickable), 16+ avatars with robot reserved for admin, realtime emoji reactions (lobby+play), big start-game sound broadcast, informational ready-check (broadcast only), and removal of the hardcoded '- sudah 2 kali gagal.' text in RelaxNotice.",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}
