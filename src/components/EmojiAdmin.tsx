@@ -10,6 +10,7 @@ import {
   type AdminEmoji,
 } from "@/lib/gameActions";
 import { toEmojiImage, readSoundDuration } from "@/lib/imageProcess";
+import { playEmojiSound, useEmojiBubbles } from "@/components/EmojiBubbles";
 import {
   EMOJI_IMAGE_ACCEPT,
   EMOJI_IMAGE_MAX_BYTES,
@@ -70,6 +71,7 @@ export default function EmojiAdmin({ pin }: { pin: string }) {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const { spawn, layer } = useEmojiBubbles();
 
   // Lepas object URL saat berganti / tertutup.
   useEffect(() => {
@@ -175,6 +177,12 @@ export default function EmojiAdmin({ pin }: { pin: string }) {
     }
   }
 
+  /** Pratinjau seperti di room: balon melayang + suara (termasuk emoji yang disembunyikan). */
+  function preview(e: AdminEmoji) {
+    spawn({ src: emojiAssetUrl(e.image_path) });
+    playEmojiSound(emojiAssetUrl(e.sound_path));
+  }
+
   function play(e: AdminEmoji) {
     audioRef.current?.pause();
     if (playingId === e.id) {
@@ -195,6 +203,7 @@ export default function EmojiAdmin({ pin }: { pin: string }) {
 
   return (
     <div className="w-full space-y-4">
+      {layer}
       <section className="rise w-full rounded-3xl bg-white p-4 shadow-soft">
         <h1 className="text-base font-extrabold text-ink">Buat Emoji</h1>
         <p className="mt-1 text-xs text-ink-soft">Emoji baru langsung tampil di Toko dan bisa dibeli dengan koin 🪙.</p>
@@ -300,30 +309,41 @@ export default function EmojiAdmin({ pin }: { pin: string }) {
         ) : (
           <ul className="mt-2 flex flex-col gap-2">
             {list?.map((e) => (
-              <li key={e.id} className="flex items-center gap-3 rounded-2xl bg-bg-end/60 p-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={emojiAssetUrl(e.image_path)} alt="" className="h-12 w-12 shrink-0 object-contain" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-ink">{e.name}</p>
-                  <p className="text-[11px] text-ink-soft">
-                    🪙 {e.price.toLocaleString("id-ID")} · dibeli {e.owners}×
-                    {!e.is_active && <span className="font-bold text-coral-text"> · disembunyikan</span>}
-                  </p>
+              <li key={e.id} className="rounded-2xl bg-bg-end/60 p-3">
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={emojiAssetUrl(e.image_path)} alt="" className="h-14 w-14 shrink-0 object-contain" />
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 break-words text-[15px] font-semibold text-ink">{e.name}</p>
+                    <p className="mt-0.5 text-xs text-ink-soft">
+                      🪙 {e.price.toLocaleString("id-ID")} · dibeli {e.owners}×
+                      {!e.is_active && <span className="font-bold text-coral-text"> · disembunyikan</span>}
+                    </p>
+                  </div>
                 </div>
-                <button
-                  onClick={() => play(e)}
-                  aria-label={`Putar suara ${e.name}`}
-                  className="rounded-xl bg-white px-2.5 py-2 text-sm shadow-soft-sm transition active:scale-95"
-                >
-                  {playingId === e.id ? "⏹" : "🔊"}
-                </button>
-                <button
-                  onClick={() => toggle(e)}
-                  disabled={togglingId === e.id}
-                  className="rounded-xl bg-white px-2.5 py-2 text-[11px] font-bold text-ink shadow-soft-sm transition active:scale-95 disabled:opacity-50"
-                >
-                  {e.is_active ? "Sembunyikan" : "Tampilkan"}
-                </button>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => preview(e)}
+                    aria-label={`Preview ${e.name}`}
+                    className="min-h-[44px] rounded-xl bg-white px-2 text-xs font-bold text-ink shadow-soft-sm transition active:scale-95"
+                  >
+                    👁 Preview
+                  </button>
+                  <button
+                    onClick={() => play(e)}
+                    aria-label={`Putar suara ${e.name}`}
+                    className="min-h-[44px] rounded-xl bg-white px-2 text-xs font-bold text-ink shadow-soft-sm transition active:scale-95"
+                  >
+                    {playingId === e.id ? "⏹ Stop" : "🔊 Suara"}
+                  </button>
+                  <button
+                    onClick={() => toggle(e)}
+                    disabled={togglingId === e.id}
+                    className="min-h-[44px] rounded-xl bg-white px-2 text-xs font-bold text-ink shadow-soft-sm transition active:scale-95 disabled:opacity-50"
+                  >
+                    {e.is_active ? "Sembunyikan" : "Tampilkan"}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

@@ -530,6 +530,34 @@ export async function buyEmoji(emojiId: string): Promise<number> {
   return Number(data);
 }
 
+export interface MyEmoji {
+  id: string;
+  name: string;
+  image_path: string;
+  sound_path: string;
+  /** Slot terpasang 1..3; null = belum dipasang. */
+  slot: number | null;
+}
+
+/** Emoji milik akun aktif + slotnya. Guest: daftar kosong. */
+export async function listMyEmojis(): Promise<MyEmoji[]> {
+  const token = getAccountToken();
+  if (!token) return [];
+  const { data, error } = await supabase.rpc("list_my_emojis", { p_token: token });
+  if (error) throw error;
+  return (data ?? []) as MyEmoji[];
+}
+
+/** Pasang emoji ke slot 1..3 (emojiId null = kosongkan slot). */
+export async function setEmojiSlot(slot: number, emojiId: string | null): Promise<void> {
+  const { error } = await supabase.rpc("set_emoji_slot", {
+    p_token: getAccountToken(),
+    p_slot: slot,
+    p_emoji_id: emojiId,
+  });
+  if (error) throw error;
+}
+
 export interface AdminEmoji {
   id: string;
   name: string;

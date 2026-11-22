@@ -17,6 +17,7 @@ import VoiceChat from "@/components/VoiceChat";
 import AccountPrompt from "@/components/AccountPrompt";
 import RoundPoints from "@/components/RoundPoints";
 import PointsPill from "@/components/PointsPill";
+import ReactionLayer from "@/components/ReactionLayer";
 
 export default function Result() {
   const params = useParams();
@@ -492,6 +493,12 @@ export default function Result() {
       </div>
 
       <VoiceChat code={code} identity={identity?.playerId ?? null} name={identity?.name} />
+
+      <ReactionLayer
+        roomCode={code}
+        canSend={!players.find((p) => p.id === identity?.playerId)?.is_spectator}
+        equippable
+      />
 
       <AccountPrompt
         roundId={round?.id ?? null}

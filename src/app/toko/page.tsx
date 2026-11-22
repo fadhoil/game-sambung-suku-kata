@@ -12,6 +12,8 @@ import {
   type ShopEmoji,
 } from "@/lib/gameActions";
 import { stagger } from "@/lib/motion";
+import EmojiInventory from "@/components/EmojiInventory";
+import { playEmojiSound, useEmojiBubbles } from "@/components/EmojiBubbles";
 
 const BUY_ERR: Record<string, string> = {
   NOT_LOGGED_IN: "Masuk dengan akun dulu untuk membeli. Pilih akun di halaman utama.",
@@ -33,6 +35,8 @@ export default function ShopPage() {
   const [buyError, setBuyError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"shop" | "inv">("shop");
+  const { spawn, layer } = useEmojiBubbles();
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const loadItems = useCallback(async () => {
@@ -78,6 +82,12 @@ export default function ShopPage() {
     a.onended = () => setPlayingId((id) => (id === e.id ? null : id));
     a.play().catch(() => setPlayingId(null));
     setPlayingId(e.id);
+  }
+
+  /** Pratinjau seperti di room: balon melayang + suara (semua emoji, dimiliki atau belum). */
+  function preview(e: { image_path: string; sound_path: string }) {
+    spawn({ src: emojiAssetUrl(e.image_path) });
+    playEmojiSound(emojiAssetUrl(e.sound_path));
   }
 
   async function handleBuy() {
@@ -130,7 +140,24 @@ export default function ShopPage() {
         </p>
       )}
 
-      {failed ? (
+      <div className="rise mb-4 grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow-soft-sm" style={stagger(1)}>
+        {(["shop", "inv"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={[
+              "rounded-xl py-2 text-sm font-bold transition active:scale-95",
+              tab === t ? "bg-gradient-to-r from-accent-from to-accent-to text-ink" : "text-ink-soft",
+            ].join(" ")}
+          >
+            {t === "shop" ? "🛒 Toko" : "🎒 Inventory"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "inv" ? (
+        account ? <EmojiInventory onPreview={preview} /> : null
+      ) : failed ? (
         <p className="animate-shake rounded-3xl bg-white p-6 text-center text-sm font-medium text-coral-text shadow-soft">
           Gagal memuat toko. Coba lagi nanti.
         </p>
@@ -164,6 +191,12 @@ export default function ShopPage() {
                 <p className="mt-2 w-full truncate text-sm font-extrabold text-ink">{e.name}</p>
                 <p className="text-xs font-bold text-accent-deep">{priceLabel(e.price)}</p>
                 <button
+                  onClick={() => preview(e)}
+                  className="mt-1 w-full rounded-xl bg-bg-end px-2 py-1.5 text-xs font-bold text-ink transition active:scale-95"
+                >
+                  👁 Preview
+                </button>
+                <button
                   onClick={() => {
                     setBuyError(null);
                     setConfirm(e);
@@ -184,6 +217,8 @@ export default function ShopPage() {
           })}
         </ul>
       )}
+
+      {layer}
 
       {toast && (
         <div

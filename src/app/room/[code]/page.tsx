@@ -592,6 +592,7 @@ export default function Lobby() {
         onReadyOpen={handleReadyOpen}
         onReadyAnswer={handleReadyAnswer}
         canSend={!amSpectator}
+        equippable
       />
 
       {/* Pop-up ready-check (informasional, auto-close 7 detik). */}

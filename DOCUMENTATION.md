@@ -32,9 +32,9 @@
    - **Tim:** tim terakhir yang masih punya anggota hidup.
 
 ### Aturan khusus
-- **Keringanan suku kata.** Bila **2 pemain berturut-turut gagal** pada suku kata target yang sama (mis. `-UR`), sistem melonggarkan target jadi **1 huruf terakhir** (mis. `-R`) untuk pemain berikutnya. Muncul pop-up keringanan di semua layar dengan **hold 3 detik** (timer ditahan) sebelum giliran lanjut. Target kembali normal begitu ada kata valid.
+- **Keringanan suku kata.** Bila **2 pemain berturut-turut gagal** pada suku kata target yang sama (mis. `-UR`), sistem melonggarkan target jadi **1 huruf terakhir** (mis. `-R`) untuk pemain berikutnya. Muncul pop-up keringanan di semua layar dengan **hold 3 detik** (timer ditahan) sebelum giliran lanjut. Target kembali normal begitu ada kata valid. Ambang gagal diacak 1..(n-1): n = **jumlah tim hidup** di mode Tim, **jumlah pemain hidup** di FFA. Keringanan juga otomatis bila suku kata target **tidak punya kata (belum terpakai) di kamus**: huruf depan dibuang satu per satu sampai ada kata (min. 1 huruf), pop-up sama.
 - **Giliran pembuka dipilih acak** (bukan selalu pemain pertama).
-- **Mode Tim:** giliran berputar antar-tim; saat giliran sebuah tim, sistem **mengacak** satu anggota tim yang masih hidup untuk menyambung.
+- **Mode Tim:** giliran berputar antar-tim; saat giliran sebuah tim, sistem **mengacak** satu anggota tim yang masih hidup **yang belum main di siklus tim itu** (semua anggota main sekali sebelum ada yang mengulang, walau ukuran tim berbeda).
 - **Pemain tereliminasi tetap di room sebagai penonton** — bisa melihat jalannya permainan realtime, tetapi tidak bisa mengetik.
 - **Host bisa mengakhiri permainan** kapan saja lewat tombol "Akhiri Permainan".
 
