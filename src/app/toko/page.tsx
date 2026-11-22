@@ -155,6 +155,14 @@ export default function ShopPage() {
         ))}
       </div>
 
+      <Link
+        href="/usulkan-emoji"
+        className="rise mb-4 block min-h-[44px] rounded-2xl bg-white py-3 text-center text-sm font-bold text-ink shadow-soft-sm transition active:scale-95"
+        style={stagger(2)}
+      >
+        💡 Usulkan Emoji
+      </Link>
+
       {tab === "inv" ? (
         account ? <EmojiInventory onPreview={preview} /> : null
       ) : failed ? (

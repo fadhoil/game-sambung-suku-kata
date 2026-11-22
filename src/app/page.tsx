@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import NewsTicker from "@/components/NewsTicker";
 import { useRouter } from "next/navigation";
 import { createRoom, joinRoom, findActiveSession, type ActiveSession } from "@/lib/gameActions";
 import AccountBar from "@/components/AccountBar";
@@ -21,6 +22,19 @@ export default function Home() {
   const [name, setName] = useState("");
   // Nilai awal tetap (bukan acak) agar HTML server = render pertama klien; acak/prefill di efek.
   const [avatar, setAvatar] = useState(AVATARS[0]);
+  const avatarRowRef = useRef<HTMLDivElement>(null);
+
+  // Avatar terpilih selalu terlihat di baris geser (mis. hasil acak/akun di ujung kanan).
+  useEffect(() => {
+    const row = avatarRowRef.current;
+    const sel = row?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!row || !sel) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    row.scrollTo({
+      left: sel.offsetLeft - (row.clientWidth - sel.offsetWidth) / 2,
+      behavior: reduce ? "auto" : "smooth",
+    });
+  }, [avatar]);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -191,6 +205,8 @@ export default function Home() {
         </span>
       </div>
 
+      <NewsTicker />
+
       {notice && (
         <div className="w-full rounded-2xl bg-cream/60 px-4 py-3 text-center text-sm font-medium text-ink">
           {notice}
@@ -231,16 +247,21 @@ export default function Home() {
       <div className="rise w-full rounded-3xl bg-white p-5 shadow-soft" style={stagger(2)}>
         {/* Avatar + nama */}
         <label className="mb-1 block text-xs font-semibold text-ink-soft">Avatar</label>
-        <div className="mb-4 flex flex-wrap gap-1.5">
+        {/* 1 baris geser (snap). Padding menyisakan ruang untuk ring/animasi agar tidak terpotong overflow. */}
+        <div
+          ref={avatarRowRef}
+          className="relative -mx-1 mb-3 flex snap-x snap-proximity gap-2 overflow-x-auto overscroll-x-contain px-1 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {AVATARS.map((a) => (
             <button
               key={a}
               onClick={() => setAvatar(a)}
               className={[
-                "h-9 w-9 rounded-xl text-lg transition hover:-translate-y-0.5 active:scale-90",
+                "h-11 w-11 shrink-0 snap-start rounded-xl text-xl transition active:scale-90",
                 avatar === a ? "avatar-pop bg-accent-to/20 ring-2 ring-accent-to" : "bg-bg-end",
               ].join(" ")}
               aria-label={`Pilih avatar ${a}`}
+              aria-pressed={avatar === a}
             >
               {a}
             </button>
@@ -341,12 +362,12 @@ export default function Home() {
         >
           🏆 Papan Peringkat
         </Link>
-        {/* <Link
+        <Link
           href="/toko"
           className="rounded-2xl bg-white px-5 py-2.5 text-sm font-bold text-ink shadow-soft-sm transition hover:-translate-y-0.5 active:scale-95"
         >
           🛒 Toko
-        </Link> */}
+        </Link>
       </div>
 
       <p className="rise text-center text-xs text-ink-soft" style={stagger(5)}>

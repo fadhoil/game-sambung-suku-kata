@@ -1,0 +1,909 @@
+diff --git a/DOCUMENTATION.md b/DOCUMENTATION.md
+index edf9b73..4fd819f 100644
+--- a/DOCUMENTATION.md
++++ b/DOCUMENTATION.md
+@@ -32,9 +32,9 @@
+    - **Tim:** tim terakhir yang masih punya anggota hidup.
+ 
+ ### Aturan khusus
+-- **Keringanan suku kata.** Bila **2 pemain berturut-turut gagal** pada suku kata target yang sama (mis. `-UR`), sistem melonggarkan target jadi **1 huruf terakhir** (mis. `-R`) untuk pemain berikutnya. Muncul pop-up keringanan di semua layar dengan **hold 3 detik** (timer ditahan) sebelum giliran lanjut. Target kembali normal begitu ada kata valid.
++- **Keringanan suku kata.** Bila **2 pemain berturut-turut gagal** pada suku kata target yang sama (mis. `-UR`), sistem melonggarkan target jadi **1 huruf terakhir** (mis. `-R`) untuk pemain berikutnya. Muncul pop-up keringanan di semua layar dengan **hold 3 detik** (timer ditahan) sebelum giliran lanjut. Target kembali normal begitu ada kata valid. Ambang gagal diacak 1..(n-1): n = **jumlah tim hidup** di mode Tim, **jumlah pemain hidup** di FFA. Keringanan juga otomatis bila suku kata target **tidak punya kata (belum terpakai) di kamus**: huruf depan dibuang satu per satu sampai ada kata (min. 1 huruf), pop-up sama.
+ - **Giliran pembuka dipilih acak** (bukan selalu pemain pertama).
+-- **Mode Tim:** giliran berputar antar-tim; saat giliran sebuah tim, sistem **mengacak** satu anggota tim yang masih hidup untuk menyambung.
++- **Mode Tim:** giliran berputar antar-tim; saat giliran sebuah tim, sistem **mengacak** satu anggota tim yang masih hidup **yang belum main di siklus tim itu** (semua anggota main sekali sebelum ada yang mengulang, walau ukuran tim berbeda).
+ - **Pemain tereliminasi tetap di room sebagai penonton** — bisa melihat jalannya permainan realtime, tetapi tidak bisa mengetik.
+ - **Host bisa mengakhiri permainan** kapan saja lewat tombol "Akhiri Permainan".
+ 
+diff --git a/src/app/room/[code]/page.tsx b/src/app/room/[code]/page.tsx
+index f3f0371..7a398f5 100644
+--- a/src/app/room/[code]/page.tsx
++++ b/src/app/room/[code]/page.tsx
+@@ -592,6 +592,7 @@ export default function Lobby() {
+         onReadyOpen={handleReadyOpen}
+         onReadyAnswer={handleReadyAnswer}
+         canSend={!amSpectator}
++        equippable
+       />
+ 
+       {/* Pop-up ready-check (informasional, auto-close 7 detik). */}
+diff --git a/src/app/room/[code]/play/page.tsx b/src/app/room/[code]/play/page.tsx
+index f862580..1c722dc 100644
+--- a/src/app/room/[code]/play/page.tsx
++++ b/src/app/room/[code]/play/page.tsx
+@@ -90,7 +90,7 @@ export default function Play() {
+   // Ditandai per-episode dengan kombinasi id + full_syllable agar tidak berulang.
+   useEffect(() => {
+     if (!round) return;
+-    const key = `${round.id}:${round.full_syllable}:${round.relaxed}`;
++    const key = `${round.id}:${round.current_word}:${round.full_syllable}:${round.relaxed}`;
+     if (round.relaxed && relaxSeenRef.current !== key) {
+       // Tampil hanya jika turn masih dalam jendela hold (deadline - 3 detik belum lewat).
+       const startedAt = new Date(round.turn_started_at).getTime();
+@@ -104,7 +104,7 @@ export default function Play() {
+       // reset agar episode relaxed berikutnya bisa tampil lagi
+       relaxSeenRef.current = null;
+     }
+-  }, [round?.id, round?.relaxed, round?.full_syllable, round?.turn_started_at]);
++  }, [round?.id, round?.current_word, round?.relaxed, round?.full_syllable, round?.turn_started_at]);
+ 
+   // Pindah halaman saat selesai
+   useEffect(() => {
+diff --git a/src/app/room/[code]/result/page.tsx b/src/app/room/[code]/result/page.tsx
+index 7f5e72f..25e95fc 100644
+--- a/src/app/room/[code]/result/page.tsx
++++ b/src/app/room/[code]/result/page.tsx
+@@ -17,6 +17,7 @@ import VoiceChat from "@/components/VoiceChat";
+ import AccountPrompt from "@/components/AccountPrompt";
+ import RoundPoints from "@/components/RoundPoints";
+ import PointsPill from "@/components/PointsPill";
++import ReactionLayer from "@/components/ReactionLayer";
+ 
+ export default function Result() {
+   const params = useParams();
+@@ -493,6 +494,12 @@ export default function Result() {
+ 
+       <VoiceChat code={code} identity={identity?.playerId ?? null} name={identity?.name} />
+ 
++      <ReactionLayer
++        roomCode={code}
++        canSend={!players.find((p) => p.id === identity?.playerId)?.is_spectator}
++        equippable
++      />
++
+       <AccountPrompt
+         roundId={round?.id ?? null}
+         playerId={identity?.playerId}
+diff --git a/src/app/toko/page.tsx b/src/app/toko/page.tsx
+index 1ce4cfc..af59a86 100644
+--- a/src/app/toko/page.tsx
++++ b/src/app/toko/page.tsx
+@@ -12,6 +12,8 @@ import {
+   type ShopEmoji,
+ } from "@/lib/gameActions";
+ import { stagger } from "@/lib/motion";
++import EmojiInventory from "@/components/EmojiInventory";
++import { playEmojiSound, useEmojiBubbles } from "@/components/EmojiBubbles";
+ 
+ const BUY_ERR: Record<string, string> = {
+   NOT_LOGGED_IN: "Masuk dengan akun dulu untuk membeli. Pilih akun di halaman utama.",
+@@ -33,6 +35,8 @@ export default function ShopPage() {
+   const [buyError, setBuyError] = useState<string | null>(null);
+   const [toast, setToast] = useState<string | null>(null);
+   const [playingId, setPlayingId] = useState<string | null>(null);
++  const [tab, setTab] = useState<"shop" | "inv">("shop");
++  const { spawn, layer } = useEmojiBubbles();
+   const audioRef = useRef<HTMLAudioElement | null>(null);
+ 
+   const loadItems = useCallback(async () => {
+@@ -80,6 +84,12 @@ export default function ShopPage() {
+     setPlayingId(e.id);
+   }
+ 
++  /** Pratinjau seperti di room: balon melayang + suara (semua emoji, dimiliki atau belum). */
++  function preview(e: { image_path: string; sound_path: string }) {
++    spawn({ src: emojiAssetUrl(e.image_path) });
++    playEmojiSound(emojiAssetUrl(e.sound_path));
++  }
++
+   async function handleBuy() {
+     if (!confirm || busy) return;
+     const target = confirm;
+@@ -130,7 +140,24 @@ export default function ShopPage() {
+         </p>
+       )}
+ 
+-      {failed ? (
++      <div className="rise mb-4 grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow-soft-sm" style={stagger(1)}>
++        {(["shop", "inv"] as const).map((t) => (
++          <button
++            key={t}
++            onClick={() => setTab(t)}
++            className={[
++              "rounded-xl py-2 text-sm font-bold transition active:scale-95",
++              tab === t ? "bg-gradient-to-r from-accent-from to-accent-to text-ink" : "text-ink-soft",
++            ].join(" ")}
++          >
++            {t === "shop" ? "🛒 Toko" : "🎒 Inventory"}
++          </button>
++        ))}
++      </div>
++
++      {tab === "inv" ? (
++        account ? <EmojiInventory onPreview={preview} /> : null
++      ) : failed ? (
+         <p className="animate-shake rounded-3xl bg-white p-6 text-center text-sm font-medium text-coral-text shadow-soft">
+           Gagal memuat toko. Coba lagi nanti.
+         </p>
+@@ -163,6 +190,12 @@ export default function ShopPage() {
+                 </div>
+                 <p className="mt-2 w-full truncate text-sm font-extrabold text-ink">{e.name}</p>
+                 <p className="text-xs font-bold text-accent-deep">{priceLabel(e.price)}</p>
++                <button
++                  onClick={() => preview(e)}
++                  className="mt-1 w-full rounded-xl bg-bg-end px-2 py-1.5 text-xs font-bold text-ink transition active:scale-95"
++                >
++                  👁 Preview
++                </button>
+                 <button
+                   onClick={() => {
+                     setBuyError(null);
+@@ -185,6 +218,8 @@ export default function ShopPage() {
+         </ul>
+       )}
+ 
++      {layer}
++
+       {toast && (
+         <div
+           role="status"
+diff --git a/src/components/EmojiAdmin.tsx b/src/components/EmojiAdmin.tsx
+index e568210..543ff18 100644
+--- a/src/components/EmojiAdmin.tsx
++++ b/src/components/EmojiAdmin.tsx
+@@ -10,6 +10,7 @@ import {
+   type AdminEmoji,
+ } from "@/lib/gameActions";
+ import { toEmojiImage, readSoundDuration } from "@/lib/imageProcess";
++import { playEmojiSound, useEmojiBubbles } from "@/components/EmojiBubbles";
+ import {
+   EMOJI_IMAGE_ACCEPT,
+   EMOJI_IMAGE_MAX_BYTES,
+@@ -70,6 +71,7 @@ export default function EmojiAdmin({ pin }: { pin: string }) {
+   const [togglingId, setTogglingId] = useState<string | null>(null);
+   const [playingId, setPlayingId] = useState<string | null>(null);
+   const audioRef = useRef<HTMLAudioElement | null>(null);
++  const { spawn, layer } = useEmojiBubbles();
+ 
+   // Lepas object URL saat berganti / tertutup.
+   useEffect(() => {
+@@ -175,6 +177,12 @@ export default function EmojiAdmin({ pin }: { pin: string }) {
+     }
+   }
+ 
++  /** Pratinjau seperti di room: balon melayang + suara (termasuk emoji yang disembunyikan). */
++  function preview(e: AdminEmoji) {
++    spawn({ src: emojiAssetUrl(e.image_path) });
++    playEmojiSound(emojiAssetUrl(e.sound_path));
++  }
++
+   function play(e: AdminEmoji) {
+     audioRef.current?.pause();
+     if (playingId === e.id) {
+@@ -195,6 +203,7 @@ export default function EmojiAdmin({ pin }: { pin: string }) {
+ 
+   return (
+     <div className="w-full space-y-4">
++      {layer}
+       <section className="rise w-full rounded-3xl bg-white p-4 shadow-soft">
+         <h1 className="text-base font-extrabold text-ink">Buat Emoji</h1>
+         <p className="mt-1 text-xs text-ink-soft">Emoji baru langsung tampil di Toko dan bisa dibeli dengan koin 🪙.</p>
+@@ -300,30 +309,41 @@ export default function EmojiAdmin({ pin }: { pin: string }) {
+         ) : (
+           <ul className="mt-2 flex flex-col gap-2">
+             {list?.map((e) => (
+-              <li key={e.id} className="flex items-center gap-3 rounded-2xl bg-bg-end/60 p-2">
+-                {/* eslint-disable-next-line @next/next/no-img-element */}
+-                <img src={emojiAssetUrl(e.image_path)} alt="" className="h-12 w-12 shrink-0 object-contain" />
+-                <div className="min-w-0 flex-1">
+-                  <p className="truncate text-sm font-bold text-ink">{e.name}</p>
+-                  <p className="text-[11px] text-ink-soft">
+-                    🪙 {e.price.toLocaleString("id-ID")} · dibeli {e.owners}×
+-                    {!e.is_active && <span className="font-bold text-coral-text"> · disembunyikan</span>}
+-                  </p>
++              <li key={e.id} className="rounded-2xl bg-bg-end/60 p-3">
++                <div className="flex items-center gap-3">
++                  {/* eslint-disable-next-line @next/next/no-img-element */}
++                  <img src={emojiAssetUrl(e.image_path)} alt="" className="h-14 w-14 shrink-0 object-contain" />
++                  <div className="min-w-0 flex-1">
++                    <p className="line-clamp-2 break-words text-[15px] font-semibold text-ink">{e.name}</p>
++                    <p className="mt-0.5 text-xs text-ink-soft">
++                      🪙 {e.price.toLocaleString("id-ID")} · dibeli {e.owners}×
++                      {!e.is_active && <span className="font-bold text-coral-text"> · disembunyikan</span>}
++                    </p>
++                  </div>
++                </div>
++                <div className="mt-3 grid grid-cols-3 gap-2">
++                  <button
++                    onClick={() => preview(e)}
++                    aria-label={`Preview ${e.name}`}
++                    className="min-h-[44px] rounded-xl bg-white px-2 text-xs font-bold text-ink shadow-soft-sm transition active:scale-95"
++                  >
++                    👁 Preview
++                  </button>
++                  <button
++                    onClick={() => play(e)}
++                    aria-label={`Putar suara ${e.name}`}
++                    className="min-h-[44px] rounded-xl bg-white px-2 text-xs font-bold text-ink shadow-soft-sm transition active:scale-95"
++                  >
++                    {playingId === e.id ? "⏹ Stop" : "🔊 Suara"}
++                  </button>
++                  <button
++                    onClick={() => toggle(e)}
++                    disabled={togglingId === e.id}
++                    className="min-h-[44px] rounded-xl bg-white px-2 text-xs font-bold text-ink shadow-soft-sm transition active:scale-95 disabled:opacity-50"
++                  >
++                    {e.is_active ? "Sembunyikan" : "Tampilkan"}
++                  </button>
+                 </div>
+-                <button
+-                  onClick={() => play(e)}
+-                  aria-label={`Putar suara ${e.name}`}
+-                  className="rounded-xl bg-white px-2.5 py-2 text-sm shadow-soft-sm transition active:scale-95"
+-                >
+-                  {playingId === e.id ? "⏹" : "🔊"}
+-                </button>
+-                <button
+-                  onClick={() => toggle(e)}
+-                  disabled={togglingId === e.id}
+-                  className="rounded-xl bg-white px-2.5 py-2 text-[11px] font-bold text-ink shadow-soft-sm transition active:scale-95 disabled:opacity-50"
+-                >
+-                  {e.is_active ? "Sembunyikan" : "Tampilkan"}
+-                </button>
+               </li>
+             ))}
+           </ul>
+diff --git a/src/components/EmojiBubbles.tsx b/src/components/EmojiBubbles.tsx
+new file mode 100644
+index 0000000..ffcc2f7
+--- /dev/null
++++ b/src/components/EmojiBubbles.tsx
+@@ -0,0 +1,52 @@
++"use client";
++
++import { useRef, useState } from "react";
++
++interface Bubble {
++  id: number;
++  left: number; // persen posisi horizontal
++  char?: string;
++  src?: string;
++}
++
++/**
++ * Balon emoji melayang (animasi .emoji-rise) — dipakai ReactionLayer (room/play/result)
++ * dan pratinjau di toko & admin agar tampilannya identik.
++ * Render `layer` sekali di halaman; panggil `spawn` tiap balon baru.
++ */
++export function useEmojiBubbles() {
++  const [bubbles, setBubbles] = useState<Bubble[]>([]);
++  const idRef = useRef(0);
++
++  function spawn(item: { char?: string; src?: string }) {
++    const id = ++idRef.current;
++    // Sebar posisi horizontal acak di sekitar tengah (30%-70%).
++    const left = 30 + Math.random() * 40;
++    setBubbles((prev) => [...prev, { id, left, ...item }]);
++    // Hapus setelah animasi selesai (~2s).
++    setTimeout(() => setBubbles((prev) => prev.filter((b) => b.id !== id)), 2100);
++  }
++
++  // Overlay ber-pointer-events:none agar tidak pernah merebut fokus/menutupi input.
++  const layer = (
++    <div className="pointer-events-none fixed inset-0 z-40 overflow-hidden" aria-hidden>
++      {bubbles.map((b) => (
++        <span key={b.id} className="emoji-rise absolute bottom-24 text-5xl" style={{ left: `${b.left}%` }}>
++          {b.src ? (
++            // eslint-disable-next-line @next/next/no-img-element
++            <img src={b.src} alt="" className="h-12 w-12 object-contain" />
++          ) : (
++            b.char
++          )}
++        </span>
++      ))}
++    </div>
++  );
++
++  return { spawn, layer };
++}
++
++/** Putar suara emoji (fire-and-forget; autoplay yang diblokir browser diabaikan). */
++export function playEmojiSound(src: string) {
++  new Audio(src).play().catch(() => {});
++}
+diff --git a/src/components/EmojiInventory.tsx b/src/components/EmojiInventory.tsx
+new file mode 100644
+index 0000000..73981ff
+--- /dev/null
++++ b/src/components/EmojiInventory.tsx
+@@ -0,0 +1,127 @@
++"use client";
++
++import { useCallback, useEffect, useState } from "react";
++import { emojiAssetUrl, listMyEmojis, setEmojiSlot, type MyEmoji } from "@/lib/gameActions";
++
++const SLOTS = [1, 2, 3];
++
++/**
++ * Inventory pemain: emoji yang sudah dibeli + 3 slot. Emoji di slot n menggantikan
++ * tombol emoji ke-n di panel reaksi pada halaman room & hasil.
++ */
++export default function EmojiInventory({
++  onPreview,
++}: {
++  onPreview: (e: { image_path: string; sound_path: string }) => void;
++}) {
++  const [items, setItems] = useState<MyEmoji[] | null>(null);
++  const [error, setError] = useState<string | null>(null);
++  const [busy, setBusy] = useState(false);
++
++  const load = useCallback(async () => {
++    try {
++      setItems(await listMyEmojis());
++      setError(null);
++    } catch {
++      setError("Gagal memuat inventory. Coba lagi nanti.");
++    }
++  }, []);
++
++  useEffect(() => {
++    load();
++  }, [load]);
++
++  /** Pasang ke slot; menekan slot yang sama lagi = melepas. */
++  async function toggle(e: MyEmoji, slot: number) {
++    if (busy) return;
++    setBusy(true);
++    try {
++      await setEmojiSlot(slot, e.slot === slot ? null : e.id);
++      await load();
++    } catch {
++      setError("Gagal menyimpan slot. Coba lagi.");
++    } finally {
++      setBusy(false);
++    }
++  }
++
++  if (items === null) {
++    return error ? (
++      <p className="rounded-3xl bg-white p-6 text-center text-sm font-medium text-coral-text shadow-soft">{error}</p>
++    ) : (
++      <p className="animate-pulse-soft p-6 text-center text-sm text-ink-soft">Memuat…</p>
++    );
++  }
++
++  return (
++    <>
++      <section className="rise mb-4 rounded-3xl bg-white p-4 shadow-soft-sm">
++        <h2 className="text-sm font-extrabold text-ink">Slot emoji</h2>
++        <p className="text-[11px] text-ink-soft">Dipakai di halaman room &amp; hasil. Slot kosong memakai emoji bawaan.</p>
++        <div className="mt-3 grid grid-cols-3 gap-2">
++          {SLOTS.map((n) => {
++            const mine = items.find((e) => e.slot === n);
++            return (
++              <div key={n} className="flex flex-col items-center rounded-2xl bg-bg-end/60 p-2">
++                <div className="flex h-14 w-14 items-center justify-center">
++                  {mine ? (
++                    // eslint-disable-next-line @next/next/no-img-element
++                    <img src={emojiAssetUrl(mine.image_path)} alt={mine.name} className="h-12 w-12 object-contain" />
++                  ) : (
++                    <span className="text-xs font-semibold text-ink-soft">Kosong</span>
++                  )}
++                </div>
++                <span className="text-[11px] font-bold text-ink">Slot {n}</span>
++              </div>
++            );
++          })}
++        </div>
++      </section>
++
++      {error && <p className="mb-3 text-center text-sm font-medium text-coral-text">{error}</p>}
++
++      {items.length === 0 ? (
++        <p className="rounded-3xl bg-white p-6 text-center text-sm text-ink-soft shadow-soft">
++          Belum punya emoji. Beli dulu di tab Toko.
++        </p>
++      ) : (
++        <ul className="grid grid-cols-2 gap-3">
++          {items.map((e) => (
++            <li key={e.id} className="flex flex-col items-center rounded-3xl bg-white p-3 text-center shadow-soft-sm">
++              <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-bg-end/60">
++                {/* eslint-disable-next-line @next/next/no-img-element */}
++                <img src={emojiAssetUrl(e.image_path)} alt={e.name} loading="lazy" className="h-20 w-20 object-contain" />
++              </div>
++              <p className="mt-2 w-full truncate text-sm font-extrabold text-ink">{e.name}</p>
++              <button
++                onClick={() => onPreview(e)}
++                className="mt-1 w-full rounded-xl bg-bg-end px-2 py-1.5 text-xs font-bold text-ink transition active:scale-95"
++              >
++                👁 Preview
++              </button>
++              <div className="mt-2 flex w-full gap-1">
++                {SLOTS.map((n) => (
++                  <button
++                    key={n}
++                    onClick={() => toggle(e, n)}
++                    disabled={busy}
++                    aria-pressed={e.slot === n}
++                    aria-label={e.slot === n ? `Lepas dari slot ${n}` : `Pasang di slot ${n}`}
++                    className={[
++                      "flex-1 rounded-xl py-2 text-xs font-bold transition active:scale-95 disabled:opacity-50",
++                      e.slot === n
++                        ? "sheen bg-gradient-to-r from-accent-from to-accent-to text-ink shadow-soft-sm"
++                        : "bg-bg-end text-ink-soft",
++                    ].join(" ")}
++                  >
++                    {n}
++                  </button>
++                ))}
++              </div>
++            </li>
++          ))}
++        </ul>
++      )}
++    </>
++  );
++}
+diff --git a/src/components/ReactionLayer.tsx b/src/components/ReactionLayer.tsx
+index 700ab48..8665ec4 100644
+--- a/src/components/ReactionLayer.tsx
++++ b/src/components/ReactionLayer.tsx
+@@ -3,14 +3,18 @@
+ import { useEffect, useRef, useState } from "react";
+ import {
+   useRoomReactions,
++  type CustomReactionEvent,
+   type EmojiKind,
+   type ReactionEvent,
+ } from "@/lib/useRoomReactions";
+ import {
++  isSoundEnabled,
+   sfxEmojiTease,
+   sfxEmojiLaugh,
+   sfxEmojiAngry,
+ } from "@/lib/sound";
++import { emojiAssetUrl, listMyEmojis, type MyEmoji } from "@/lib/gameActions";
++import { playEmojiSound, useEmojiBubbles } from "@/components/EmojiBubbles";
+ 
+ const EMOJI_CHAR: Record<EmojiKind, string> = {
+   tease: "\uD83D\uDE1C", // 😜
+@@ -30,11 +34,8 @@ function playEmojiSfx(kind: EmojiKind) {
+   else sfxEmojiAngry();
+ }
+ 
+-interface FloatingEmoji {
+-  id: number;
+-  emoji: EmojiKind;
+-  left: number; // persen posisi horizontal
+-}
++/** Path datang dari klien lain: terima hanya path Storage polos (tanpa "..", skema, dsb). */
++const safePath = (p: unknown): p is string => typeof p === "string" && /^[\w./-]+$/.test(p) && !p.includes("..");
+ 
+ interface Props {
+   roomCode: string;
+@@ -50,6 +51,11 @@ interface Props {
+    * Dipakai untuk penonton agar tidak mengganggu permainan.
+    */
+   canSend?: boolean;
++  /**
++   * true = 3 tombol panel memakai emoji toko yang dipasang di inventory akun
++   * (slot kosong tetap emoji bawaan). Dipakai di room & result.
++   */
++  equippable?: boolean;
+ }
+ 
+ /**
+@@ -63,28 +69,32 @@ export default function ReactionLayer({
+   onReadyAnswer,
+   bottomOffsetPx = 0,
+   canSend = true,
++  equippable = false,
+ }: Props) {
+-  const [floats, setFloats] = useState<FloatingEmoji[]>([]);
+-  const idRef = useRef(0);
++  const { spawn, layer } = useEmojiBubbles();
++  const [equipped, setEquipped] = useState<MyEmoji[]>([]);
+ 
+-  function spawn(kind: EmojiKind) {
+-    const id = ++idRef.current;
+-    // Sebar posisi horizontal acak di sekitar tengah (30%-70%).
+-    const left = 30 + Math.random() * 40;
+-    setFloats((prev) => [...prev, { id, emoji: kind, left }]);
+-    // Hapus setelah animasi selesai (~2s).
+-    setTimeout(() => {
+-      setFloats((prev) => prev.filter((f) => f.id !== id));
+-    }, 2100);
+-  }
++  useEffect(() => {
++    if (!equippable) return;
++    listMyEmojis()
++      .then((list) => setEquipped(list.filter((e) => e.slot !== null)))
++      .catch(() => {});
++  }, [equippable]);
+ 
+   function handleIncoming(ev: ReactionEvent) {
+-    spawn(ev.emoji);
++    spawn({ char: EMOJI_CHAR[ev.emoji] });
+     playEmojiSfx(ev.emoji);
+   }
+ 
++  function handleCustomIncoming(ev: CustomReactionEvent) {
++    if (!safePath(ev?.image_path) || !safePath(ev?.sound_path)) return;
++    spawn({ src: emojiAssetUrl(ev.image_path) });
++    if (isSoundEnabled()) playEmojiSound(emojiAssetUrl(ev.sound_path));
++  }
++
+   const api = useRoomReactions(roomCode, {
+     onReaction: handleIncoming,
++    onCustomReaction: handleCustomIncoming,
+     onReadyOpen: onReadyOpen,
+     onReadyAnswer: onReadyAnswer,
+   });
+@@ -107,17 +117,7 @@ export default function ReactionLayer({
+   return (
+     <>
+       {/* Overlay animasi — TIDAK menerima pointer agar input tetap fokus. */}
+-      <div className="pointer-events-none fixed inset-0 z-40 overflow-hidden" aria-hidden>
+-        {floats.map((f) => (
+-          <span
+-            key={f.id}
+-            className="emoji-rise absolute bottom-24 text-5xl"
+-            style={{ left: `${f.left}%` }}
+-          >
+-            {EMOJI_CHAR[f.emoji]}
+-          </span>
+-        ))}
+-      </div>
++      {layer}
+ 
+       {/* Panel emoji terkunci bawah-tengah (bisa digeser ke atas via offset).
+           Penonton tidak mendapat panel kirim. */}
+@@ -127,17 +127,30 @@ export default function ReactionLayer({
+         style={{ bottom: bottomOffsetPx }}
+       >
+         <div className="flex items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-soft">
+-          {(Object.keys(EMOJI_CHAR) as EmojiKind[]).map((kind) => (
+-            <button
+-              key={kind}
+-              onClick={() => handleClick(kind)}
+-              className="rounded-xl px-2 py-1 text-2xl transition hover:-translate-y-0.5 active:scale-90"
+-              aria-label={EMOJI_LABEL[kind]}
+-              title={EMOJI_LABEL[kind]}
+-            >
+-              {EMOJI_CHAR[kind]}
+-            </button>
+-          ))}
++          {(Object.keys(EMOJI_CHAR) as EmojiKind[]).map((kind, i) => {
++            // Slot i+1: emoji toko bila terpasang, selain itu emoji bawaan.
++            const mine = equipped.find((e) => e.slot === i + 1);
++            return (
++              <button
++                key={kind}
++                onClick={() =>
++                  mine
++                    ? api.sendCustomReaction({ image_path: mine.image_path, sound_path: mine.sound_path })
++                    : handleClick(kind)
++                }
++                className="rounded-xl px-2 py-1 text-2xl transition hover:-translate-y-0.5 active:scale-90"
++                aria-label={mine ? mine.name : EMOJI_LABEL[kind]}
++                title={mine ? mine.name : EMOJI_LABEL[kind]}
++              >
++                {mine ? (
++                  // eslint-disable-next-line @next/next/no-img-element
++                  <img src={emojiAssetUrl(mine.image_path)} alt="" className="h-8 w-8 object-contain" />
++                ) : (
++                  EMOJI_CHAR[kind]
++                )}
++              </button>
++            );
++          })}
+         </div>
+       </div>
+       )}
+diff --git a/src/lib/gameActions.ts b/src/lib/gameActions.ts
+index 2470a52..102584d 100644
+--- a/src/lib/gameActions.ts
++++ b/src/lib/gameActions.ts
+@@ -530,6 +530,34 @@ export async function buyEmoji(emojiId: string): Promise<number> {
+   return Number(data);
+ }
+ 
++export interface MyEmoji {
++  id: string;
++  name: string;
++  image_path: string;
++  sound_path: string;
++  /** Slot terpasang 1..3; null = belum dipasang. */
++  slot: number | null;
++}
++
++/** Emoji milik akun aktif + slotnya. Guest: daftar kosong. */
++export async function listMyEmojis(): Promise<MyEmoji[]> {
++  const token = getAccountToken();
++  if (!token) return [];
++  const { data, error } = await supabase.rpc("list_my_emojis", { p_token: token });
++  if (error) throw error;
++  return (data ?? []) as MyEmoji[];
++}
++
++/** Pasang emoji ke slot 1..3 (emojiId null = kosongkan slot). */
++export async function setEmojiSlot(slot: number, emojiId: string | null): Promise<void> {
++  const { error } = await supabase.rpc("set_emoji_slot", {
++    p_token: getAccountToken(),
++    p_slot: slot,
++    p_emoji_id: emojiId,
++  });
++  if (error) throw error;
++}
++
+ export interface AdminEmoji {
+   id: string;
+   name: string;
+diff --git a/src/lib/useRoomReactions.ts b/src/lib/useRoomReactions.ts
+index 11bfbc1..5588674 100644
+--- a/src/lib/useRoomReactions.ts
++++ b/src/lib/useRoomReactions.ts
+@@ -9,6 +9,12 @@ export interface ReactionEvent {
+   emoji: EmojiKind;
+ }
+ 
++/** Emoji kustom dari toko: yang dikirim hanya path file Storage (bukan file-nya). */
++export interface CustomReactionEvent {
++  image_path: string;
++  sound_path: string;
++}
++
+ /** Jenis event ready-check (informasional, broadcast-only — tidak ke DB). */
+ export interface ReadyOpenEvent {
+   /* tidak ada payload tambahan; sekadar penanda host membuka ready-check */
+@@ -20,12 +26,14 @@ export interface ReadyAnswerEvent {
+ 
+ interface Handlers {
+   onReaction?: (ev: ReactionEvent) => void;
++  onCustomReaction?: (ev: CustomReactionEvent) => void;
+   onReadyOpen?: (ev: ReadyOpenEvent) => void;
+   onReadyAnswer?: (ev: ReadyAnswerEvent) => void;
+ }
+ 
+ interface ReactionApi {
+   sendReaction: (emoji: EmojiKind) => void;
++  sendCustomReaction: (ev: CustomReactionEvent) => void;
+   openReadyCheck: () => void;
+   answerReadyCheck: (playerId: string, ready: boolean) => void;
+ }
+@@ -58,6 +66,9 @@ export function useRoomReactions(
+       .on("broadcast", { event: "emoji" }, ({ payload }) => {
+         handlersRef.current.onReaction?.(payload as ReactionEvent);
+       })
++      .on("broadcast", { event: "emoji:custom" }, ({ payload }) => {
++        handlersRef.current.onCustomReaction?.(payload as CustomReactionEvent);
++      })
+       .on("broadcast", { event: "readycheck:open" }, ({ payload }) => {
+         handlersRef.current.onReadyOpen?.((payload ?? {}) as ReadyOpenEvent);
+       })
+@@ -76,6 +87,10 @@ export function useRoomReactions(
+     channelRef.current?.send({ type: "broadcast", event: "emoji", payload: { emoji } });
+   }
+ 
++  function sendCustomReaction(ev: CustomReactionEvent) {
++    channelRef.current?.send({ type: "broadcast", event: "emoji:custom", payload: ev });
++  }
++
+   function openReadyCheck() {
+     channelRef.current?.send({ type: "broadcast", event: "readycheck:open", payload: {} });
+   }
+@@ -88,5 +103,5 @@ export function useRoomReactions(
+     });
+   }
+ 
+-  return { sendReaction, openReadyCheck, answerReadyCheck };
++  return { sendReaction, sendCustomReaction, openReadyCheck, answerReadyCheck };
+ }
+diff --git a/supabase/functions.sql b/supabase/functions.sql
+index c792f69..f115b9e 100644
+--- a/supabase/functions.sql
++++ b/supabase/functions.sql
+@@ -560,12 +560,14 @@ begin
+   -- reset status hidup + isi ulang nyawa + reset urutan eliminasi.
+   -- Penonton tetap tidak hidup (is_alive=false) sehingga tidak masuk giliran/cek menang.
+   update public.players
+-    set is_alive = not is_spectator, lives = v_room.max_lives, eliminated_order = null
++    set is_alive = not is_spectator, lives = v_room.max_lives, eliminated_order = null,
++        turn_done = false
+     where room_id = p_room_id;
+   update public.teams set eliminated_order = null where room_id = p_room_id;
+ 
+   v_req := public.fn_last_syllable(p_starting_word);
+   select * into v_first from public.fn_pick_first_subject(p_room_id);
++  update public.players set turn_done = true where id = v_first.subject_id;
+ 
+   -- Giliran pertama diberi tambahan 5 detik "grace" untuk menutupi hitung
+   -- mundur 5 detik di klien, agar waktu pemain pertama tidak terpotong.
+@@ -657,10 +659,17 @@ begin
+           and exists (select 1 from public.players p where p.team_id = t.id and p.is_alive)
+         order by t.turn_order asc, t.id asc limit 1;
+     end if;
+-    -- acak anggota hidup dari tim tsb
++    -- acak anggota hidup tim tsb yang BELUM dapat giliran di siklus tim ini;
++    -- bila semua sudah main, mulai siklus baru (reset penanda). Dengan begitu
++    -- tiap anggota main sekali per siklus walau ukuran tim berbeda (3 vs 4).
++    if not exists (select 1 from public.players
++                    where team_id = v_next_team and is_alive and not turn_done) then
++      update public.players set turn_done = false where team_id = v_next_team;
++    end if;
+     select id into v_next_subject from public.players
+-      where team_id = v_next_team and is_alive
++      where team_id = v_next_team and is_alive and not turn_done
+       order by random() limit 1;
++    update public.players set turn_done = true where id = v_next_subject;
+   end if;
+ 
+   update public.rounds
+@@ -826,6 +835,7 @@ declare
+   v_norm text;
+   v_reason text;
+   v_next_syl text;
++  v_fit text;
+   v_finished boolean;
+ begin
+   select * into v_round from public.rounds where id = p_round_id for update;
+@@ -879,11 +889,15 @@ begin
+     values (p_round_id, p_player_id, v_norm, true, null);
+   insert into public.used_words(round_id, word) values (p_round_id, v_norm);
+ 
++  -- Keringanan kamus: bila suku kata penuh tak punya kata (belum terpakai) di
++  -- kamus, buang huruf depan satu per satu (min. 1 huruf) -> relaxed otomatis.
++  v_fit := public.fn_fit_syllable(p_round_id, v_next_syl);
++
+   update public.rounds
+     set current_word = v_norm,
+-        required_syllable = v_next_syl,
++        required_syllable = v_fit,
+         full_syllable = v_next_syl,
+-        relaxed = false,
++        relaxed = (v_fit <> v_next_syl),
+         consecutive_fails = 0,
+         -- Acak ulang ambang keringanan untuk target baru (berdasar jumlah
+         -- pemain yang masih bertahan saat ini).
+@@ -891,7 +905,14 @@ begin
+     where id = p_round_id;
+ 
+   perform public.fn_advance_turn(p_round_id);
+-  return json_build_object('ok', true);
++
++  -- Hold 3 detik untuk pop-up keringanan (sama seperti keringanan dari timeout).
++  if v_fit <> v_next_syl then
++    update public.rounds
++      set turn_deadline = turn_deadline + make_interval(secs => 3)
++      where id = p_round_id;
++  end if;
++  return json_build_object('ok', true, 'relaxed', v_fit <> v_next_syl);
+ end;
+ $$;
+ 
+diff --git a/supabase/migration-v16.sql b/supabase/migration-v16.sql
+new file mode 100644
+index 0000000..715406b
+--- /dev/null
++++ b/supabase/migration-v16.sql
+@@ -0,0 +1,111 @@
++-- =====================================================================
++-- Sambung Suku Kata — Migration v16
++--  (1) Mode tim: pemain tiap tim dapat giliran merata (kolom players.turn_done).
++--  (2) Ambang keringanan mode tim dihitung dari JUMLAH TIM yang masih hidup
++--      (FFA tetap dari jumlah pemain hidup). Menimpa fn_relax_threshold (v8).
++--  (3) Keringanan otomatis bila suku kata sambung tidak punya kata di kamus:
++--      fn_fit_syllable membuang huruf depan satu per satu (min. 1 huruf).
++--  (4) Inventory emoji: 3 slot per akun (account_emoji_slots) + RPC.
++--
++-- URUTAN DEPLOY: file ini -> functions.sql -> deploy Vercel.
++-- Prasyarat: migration-v15.sql. Aman diulang.
++-- =====================================================================
++
++-- (1) Penanda "sudah dapat giliran di siklus tim ini". Direset otomatis saat
++-- semua anggota hidup satu tim sudah main, dan saat start_game.
++alter table public.players
++  add column if not exists turn_done boolean not null default false;
++
++-- (2) Ambang keringanan: acak 1..(n-1), n = tim hidup (mode tim) / pemain hidup (FFA).
++create or replace function public.fn_relax_threshold(p_room_id uuid)
++returns int language plpgsql as $$
++declare
++  v_mode text;
++  v_n int;
++  v_max int;
++begin
++  select mode into v_mode from public.rooms where id = p_room_id;
++
++  if v_mode = 'team' then
++    select count(*) into v_n from public.teams t
++      where t.room_id = p_room_id
++        and exists (select 1 from public.players p where p.team_id = t.id and p.is_alive);
++  else
++    select count(*) into v_n from public.players
++      where room_id = p_room_id and is_alive;
++  end if;
++
++  v_max := greatest(1, coalesce(v_n, 2) - 1);
++  return 1 + floor(random() * v_max)::int;
++end;
++$$;
++
++grant execute on function public.fn_relax_threshold(uuid) to anon, authenticated;
++
++-- (3) Target terpanjang yang masih punya lanjutan (belum terpakai) di kamus.
++-- Huruf DEPAN dibuang satu per satu (sejalan dengan keringanan lama: -UR -> -R),
++-- berhenti di 1 huruf. Jalankan SETELAH kata baru masuk used_words.
++create or replace function public.fn_fit_syllable(p_round_id uuid, p_syllable text)
++returns text language plpgsql stable as $$
++declare
++  v text := p_syllable;
++begin
++  while char_length(v) > 1 and not public.fn_has_continuation(p_round_id, v) loop
++    v := substr(v, 2);
++  end loop;
++  return v;
++end;
++$$;
++
++grant execute on function public.fn_fit_syllable(uuid, text) to anon, authenticated;
++
++-- (4) Slot emoji. FK komposit ke account_emojis => hanya emoji yang DIMILIKI
++-- yang bisa dipasang; unique (account_id, emoji_id) => satu emoji hanya di satu slot.
++create table if not exists public.account_emoji_slots (
++  account_id uuid not null,
++  slot smallint not null check (slot between 1 and 3),
++  emoji_id uuid not null,
++  primary key (account_id, slot),
++  unique (account_id, emoji_id),
++  foreign key (account_id, emoji_id)
++    references public.account_emojis (account_id, emoji_id) on delete cascade
++);
++alter table public.account_emoji_slots enable row level security;  -- tanpa policy: hanya lewat RPC
++
++-- Emoji milik akun (termasuk yang disembunyikan dari toko) + slot terpasang (null = belum).
++create or replace function public.list_my_emojis(p_token text)
++returns table (id uuid, name text, image_path text, sound_path text, slot smallint)
++language sql stable security definer as $$
++  select e.id, e.name, e.image_path, e.sound_path, s.slot
++  from public.account_emojis ae
++  join public.emojis e on e.id = ae.emoji_id
++  left join public.account_emoji_slots s
++         on s.account_id = ae.account_id and s.emoji_id = ae.emoji_id
++  where ae.account_id = public.fn_account_id(p_token)
++  order by ae.purchased_at desc;
++$$;
++
++-- Pasang emoji ke slot 1..3; p_emoji_id null = kosongkan slot. Emoji yang sama
++-- di slot lain otomatis dipindah. Galat: NOT_LOGGED_IN, INVALID_SLOT, NOT_OWNED.
++create or replace function public.set_emoji_slot(p_token text, p_slot int, p_emoji_id uuid)
++returns void language plpgsql security definer as $$
++declare
++  v_acc uuid := public.fn_account_id(p_token);
++begin
++  if v_acc is null then raise exception 'NOT_LOGGED_IN'; end if;
++  if p_slot is null or p_slot not between 1 and 3 then raise exception 'INVALID_SLOT'; end if;
++  if p_emoji_id is not null and not exists (
++    select 1 from public.account_emojis where account_id = v_acc and emoji_id = p_emoji_id
++  ) then raise exception 'NOT_OWNED'; end if;
++
++  delete from public.account_emoji_slots
++   where account_id = v_acc and (slot = p_slot or emoji_id = p_emoji_id);
++  if p_emoji_id is not null then
++    insert into public.account_emoji_slots(account_id, slot, emoji_id)
++      values (v_acc, p_slot, p_emoji_id);
++  end if;
++end;
++$$;
++
++grant execute on function public.list_my_emojis(text) to anon, authenticated;
++grant execute on function public.set_emoji_slot(text, int, uuid) to anon, authenticated;

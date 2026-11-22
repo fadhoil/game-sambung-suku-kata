@@ -584,12 +584,31 @@ export async function adminSetEmojiActive(pin: string, id: string, active: boole
 export type CreateEmojiErrorCode =
   | "BAD_PIN" | "INVALID_NAME" | "INVALID_PRICE" | "FILES_REQUIRED" | "IMAGE_TOO_LARGE" | "SOUND_TOO_LARGE"
   | "IMAGE_TYPE" | "SOUND_TYPE" | "NAME_TAKEN" | "CONFIG_SERVICE_KEY" | "CONFIG_SUPABASE" | "STORAGE"
+  | "NOT_LOGGED_IN" | "TOO_MANY_PENDING" | "INVALID_ID" | "INVALID_ACTION" | "NOT_FOUND"
   | "UPSTREAM" | "NETWORK" | "OTHER";
 
 export class CreateEmojiError extends Error {
   constructor(public code: CreateEmojiErrorCode) {
     super(code);
   }
+}
+
+/** Kirim ke route server emoji; sukses = diam, gagal = CreateEmojiError(kode dari server). */
+async function sendEmojiRequest(url: string, init: RequestInit): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    throw new CreateEmojiError("NETWORK");
+  }
+  if (res.ok) return;
+  let code: string | undefined;
+  try {
+    code = (await res.json())?.error;
+  } catch {
+    /* bukan JSON */
+  }
+  throw new CreateEmojiError((code as CreateEmojiErrorCode) || "OTHER");
 }
 
 /** Buat emoji baru: file diunggah oleh route server (/api/admin/emoji) setelah PIN diverifikasi. */
@@ -603,18 +622,89 @@ export async function createEmoji(
   form.set("price", String(input.price));
   form.set("image", input.image, input.imageName);
   form.set("sound", input.sound, input.sound.name);
-  let res: Response;
-  try {
-    res = await fetch("/api/admin/emoji", { method: "POST", body: form });
-  } catch {
-    throw new CreateEmojiError("NETWORK");
-  }
-  if (res.ok) return;
-  let code: string | undefined;
-  try {
-    code = (await res.json())?.error;
-  } catch {
-    /* bukan JSON */
-  }
-  throw new CreateEmojiError((code as CreateEmojiErrorCode) || "OTHER");
+  await sendEmojiRequest("/api/admin/emoji", { method: "POST", body: form });
+}
+
+/** Hapus emoji permanen (toko + inventory semua pemain + file) — butuh route server untuk Storage. */
+export async function adminDeleteEmoji(pin: string, id: string): Promise<void> {
+  await sendEmojiRequest("/api/admin/emoji-remove", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin, action: "delete", id }),
+  });
+}
+
+// ---------- usulan emoji dari pemain ----------
+
+/** Pemain (ber-akun) mengusulkan emoji; masuk antrean konfirmasi admin. */
+export async function suggestEmoji(input: {
+  name: string;
+  image: Blob;
+  imageName: string;
+  sound: File;
+}): Promise<void> {
+  const token = getAccountToken();
+  if (!token) throw new CreateEmojiError("NOT_LOGGED_IN");
+  const form = new FormData();
+  form.set("token", token);
+  form.set("name", input.name);
+  form.set("image", input.image, input.imageName);
+  form.set("sound", input.sound, input.sound.name);
+  await sendEmojiRequest("/api/emoji-suggest", { method: "POST", body: form });
+}
+
+export interface EmojiSuggestion {
+  id: string;
+  name: string;
+  image_path: string;
+  sound_path: string;
+  suggested_by: string | null;
+  created_at: string;
+}
+
+export async function adminListEmojiSuggestions(pin: string): Promise<EmojiSuggestion[]> {
+  const { data, error } = await supabase.rpc("admin_list_emoji_suggestions", { p_pin: pin });
+  if (error) throw error;
+  return (data ?? []) as EmojiSuggestion[];
+}
+
+/** Setujui usulan: masuk toko dengan nama (boleh diedit) dan harga yang ditentukan admin. */
+export async function adminApproveEmojiSuggestion(
+  pin: string,
+  id: string,
+  name: string,
+  price: number
+): Promise<void> {
+  const { error } = await supabase.rpc("admin_review_emoji_suggestion", {
+    p_pin: pin,
+    p_id: id,
+    p_approve: true,
+    p_name: name,
+    p_price: price,
+  });
+  if (error) throw error;
+}
+
+/** Tolak usulan (file usulan ikut dihapus oleh route server). */
+export async function adminRejectEmojiSuggestion(pin: string, id: string): Promise<void> {
+  await sendEmojiRequest("/api/admin/emoji-remove", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin, action: "reject", id }),
+  });
+}
+
+// ---------- berita hari ini (running text beranda) ----------
+
+export interface NewsItem {
+  kind: "word" | "emoji";
+  name: string;
+  reviewed_at: string;
+}
+
+/** Usulan kata/emoji yang diterima hari ini (terbaru dulu). Gagal = daftar kosong. */
+export async function fetchTodayNews(): Promise<NewsItem[]> {
+  const { data, error } = await supabase.rpc("list_today_news");
+  if (error) return [];
+  return (data ?? []) as NewsItem[];
 }
