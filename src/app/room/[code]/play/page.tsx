@@ -90,7 +90,7 @@ export default function Play() {
   // Ditandai per-episode dengan kombinasi id + full_syllable agar tidak berulang.
   useEffect(() => {
     if (!round) return;
-    const key = `${round.id}:${round.current_word}:${round.full_syllable}:${round.relaxed}`;
+    const key = `${round.id}:${round.current_word}:${round.full_syllable}:${round.required_syllable}:${round.relaxed}`;
     if (round.relaxed && relaxSeenRef.current !== key) {
       // Tampil hanya jika turn masih dalam jendela hold (deadline - 3 detik belum lewat).
       const startedAt = new Date(round.turn_started_at).getTime();
@@ -104,7 +104,7 @@ export default function Play() {
       // reset agar episode relaxed berikutnya bisa tampil lagi
       relaxSeenRef.current = null;
     }
-  }, [round?.id, round?.current_word, round?.relaxed, round?.full_syllable, round?.turn_started_at]);
+  }, [round?.id, round?.current_word, round?.relaxed, round?.full_syllable, round?.required_syllable, round?.turn_started_at]);
 
   // Pindah halaman saat selesai
   useEffect(() => {
@@ -444,6 +444,7 @@ export default function Play() {
         roomCode={code}
         bottomOffsetPx={useFloatingInput && isMyTurn && !amEliminated ? 84 : 0}
         canSend={!amSpectator}
+        equippable
       />
       {isHost && identity && (
         <EndGameConfirm

@@ -295,7 +295,7 @@ export default function Result() {
   }
 
   return (
-    <main className="relative mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-5 py-10">
+    <main className="relative mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-5 pb-32 pt-10">
       <Confetti />
 
       <div className="rise z-10 w-full rounded-3xl bg-white p-7 text-center shadow-soft" style={stagger(0)}>
