@@ -560,12 +560,14 @@ begin
   -- reset status hidup + isi ulang nyawa + reset urutan eliminasi.
   -- Penonton tetap tidak hidup (is_alive=false) sehingga tidak masuk giliran/cek menang.
   update public.players
-    set is_alive = not is_spectator, lives = v_room.max_lives, eliminated_order = null
+    set is_alive = not is_spectator, lives = v_room.max_lives, eliminated_order = null,
+        turn_done = false
     where room_id = p_room_id;
   update public.teams set eliminated_order = null where room_id = p_room_id;
 
   v_req := public.fn_last_syllable(p_starting_word);
   select * into v_first from public.fn_pick_first_subject(p_room_id);
+  update public.players set turn_done = true where id = v_first.subject_id;
 
   -- Giliran pertama diberi tambahan 5 detik "grace" untuk menutupi hitung
   -- mundur 5 detik di klien, agar waktu pemain pertama tidak terpotong.
@@ -657,10 +659,17 @@ begin
           and exists (select 1 from public.players p where p.team_id = t.id and p.is_alive)
         order by t.turn_order asc, t.id asc limit 1;
     end if;
-    -- acak anggota hidup dari tim tsb
+    -- acak anggota hidup tim tsb yang BELUM dapat giliran di siklus tim ini;
+    -- bila semua sudah main, mulai siklus baru (reset penanda). Dengan begitu
+    -- tiap anggota main sekali per siklus walau ukuran tim berbeda (3 vs 4).
+    if not exists (select 1 from public.players
+                    where team_id = v_next_team and is_alive and not turn_done) then
+      update public.players set turn_done = false where team_id = v_next_team;
+    end if;
     select id into v_next_subject from public.players
-      where team_id = v_next_team and is_alive
+      where team_id = v_next_team and is_alive and not turn_done
       order by random() limit 1;
+    update public.players set turn_done = true where id = v_next_subject;
   end if;
 
   update public.rounds
@@ -774,12 +783,26 @@ begin
   -- jadi 1 huruf terakhir (sekali).
   if not v_finished then
     select * into v_round from public.rounds where id = p_round_id;
+
+    -- Eliminasi barusan bisa menurunkan jumlah pemain/tim bertahan. Bila ambang
+    -- lama kini melebihi batas atas baru (n-1), acak ulang di rentang yang baru
+    -- (mis. sisa 2 => ambang 1). Ambang yang masih di dalam rentang dibiarkan.
+    if v_round.relax_threshold > greatest(1, public.fn_relax_n(v_room_id) - 1) then
+      update public.rounds
+        set relax_threshold = public.fn_relax_threshold(v_room_id)
+        where id = p_round_id;
+    end if;
+
     update public.rounds
       set consecutive_fails = consecutive_fails + 1
       where id = p_round_id
       returning * into v_round;
 
-    if v_round.consecutive_fails >= v_round.relax_threshold and not v_round.relaxed then
+    -- Syarat "masih bisa dilonggarkan" = target masih > 1 huruf. Jadi keringanan
+    -- karena gagal tetap berlaku walau target sudah dipangkas keringanan kamus
+    -- (keduanya saling menambah, bukan saling menggantikan).
+    if v_round.consecutive_fails >= v_round.relax_threshold
+       and char_length(v_round.required_syllable) > 1 then
       v_full := coalesce(v_round.full_syllable, v_round.required_syllable);
       update public.rounds
         set relaxed = true,
@@ -826,6 +849,7 @@ declare
   v_norm text;
   v_reason text;
   v_next_syl text;
+  v_fit text;
   v_finished boolean;
 begin
   select * into v_round from public.rounds where id = p_round_id for update;
@@ -879,11 +903,15 @@ begin
     values (p_round_id, p_player_id, v_norm, true, null);
   insert into public.used_words(round_id, word) values (p_round_id, v_norm);
 
+  -- Keringanan kamus: bila suku kata penuh tak punya kata (belum terpakai) di
+  -- kamus, buang huruf depan satu per satu (min. 1 huruf) -> relaxed otomatis.
+  v_fit := public.fn_fit_syllable(p_round_id, v_next_syl);
+
   update public.rounds
     set current_word = v_norm,
-        required_syllable = v_next_syl,
+        required_syllable = v_fit,
         full_syllable = v_next_syl,
-        relaxed = false,
+        relaxed = (v_fit <> v_next_syl),
         consecutive_fails = 0,
         -- Acak ulang ambang keringanan untuk target baru (berdasar jumlah
         -- pemain yang masih bertahan saat ini).
@@ -891,7 +919,14 @@ begin
     where id = p_round_id;
 
   perform public.fn_advance_turn(p_round_id);
-  return json_build_object('ok', true);
+
+  -- Hold 3 detik untuk pop-up keringanan (sama seperti keringanan dari timeout).
+  if v_fit <> v_next_syl then
+    update public.rounds
+      set turn_deadline = turn_deadline + make_interval(secs => 3)
+      where id = p_round_id;
+  end if;
+  return json_build_object('ok', true, 'relaxed', v_fit <> v_next_syl);
 end;
 $$;
 
