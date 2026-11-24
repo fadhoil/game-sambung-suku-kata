@@ -6,6 +6,25 @@
 
 Tanpa instal. Buka di HP, buat room, bagikan kode atau QR ke teman, lalu mulai.
 
+## Tentang
+
+**Sambung Suku Kata** adalah game kata multiplayer berbahasa Indonesia untuk **2–16 pemain** dalam satu room. Setiap pemain harus menyambung kata yang diawali **suku kata terakhir** kata sebelumnya — misalnya LUKISAN → **SAN**TAI. Salah, kehabisan waktu, atau memakai kata yang sudah dipakai berarti kehilangan satu nyawa. Pemain terakhir yang bertahan menang.
+
+Tidak perlu instal atau mendaftar: buka [ado-sambung-kata.vercel.app](https://ado-sambung-kata.vercel.app/), buat room, bagikan kode 6 karakter atau QR ke teman, dan main dari HP masing-masing. Cocok untuk acara kumpul, kelas, kantor, atau sekadar iseng bareng teman.
+
+| | |
+| Pemain | 2–16 orang per room |
+| Bahasa | Indonesia (kamus termasuk kata percakapan) |
+| Mode | Free For All dan Tim |
+| Timer | 5 / 7 / 10 / 15 detik per giliran |
+| Nyawa | 1–5 per pemain |
+| Biaya | Gratis, tanpa instal |
+| Platform | Browser HP dan desktop |
+
+**Kenapa dibuat:** game kata banyak yang hanya bisa satu pemain atau harus unduh aplikasi. Sambung Suku Kata dibuat supaya satu grup bisa langsung main bareng dalam hitungan detik — cukup satu link.
+
+**Kontribusi:** usulan kata dan emoji dikirim lewat fitur *Usulkan* di dalam game. Untuk perubahan kode, baca [AI-AGENTS.md](AI-AGENTS.md) dan [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ---
 
 ## Fitur
@@ -77,6 +96,7 @@ Prinsip utama: **seluruh aturan game dijalankan di fungsi Postgres (RPC `SECURIT
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Struktur, teknologi, model data, RPC, alur kunci, keamanan, deploy |
 | [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) | Warna, tipografi, komponen UI, gerak, aksesibilitas |
 | [AI-AGENTS.md](AI-AGENTS.md) | Panduan untuk AI coding agent: aturan, standar kode, playbook |
+| [SEO.md](SEO.md) | SEO, AEO, dan GEO: metadata, JSON-LD, robots, sitemap, `llms.txt`, langkah manual |
 
 ---
 
@@ -107,6 +127,7 @@ cp .env.example .env
 | `SUPABASE_SERVICE_ROLE_KEY` | Untuk toko emoji | **Rahasia, hanya server.** Jangan beri awalan `NEXT_PUBLIC_` |
 | `NEXT_PUBLIC_AGORA_APP_ID` | Untuk voice chat | App ID project Agora (tidak rahasia) |
 | `AGORA_APP_CERTIFICATE` | Untuk voice chat | **Rahasia, hanya server.** Dibuat setelah App Certificate diaktifkan |
+| `NEXT_PUBLIC_SITE_URL` | Opsional | URL publik situs untuk canonical, sitemap, dan OG. Kosongkan untuk memakai `https://ado-sambung-kata.vercel.app` |
 
 > **Voice chat (Agora).** Buat project di [console.agora.io](https://console.agora.io) — gratis 10.000 menit/bulan, tanpa kartu kredit. Buka **Project Management → Configure** dan aktifkan **App Certificate**, lalu salin App ID dan App Certificate ke `.env`. Token dibuat oleh route server `/api/agora-token` (dengan *string user account* = `playerId`), jadi App Certificate tidak pernah sampai ke browser. Menit Agora dihitung **per peserta di channel, termasuk pendengar**, jadi voice otomatis tersambung saat masuk lobi/hasil — pantau pemakaian di Agora Console agar kuota gratis tidak habis.
 

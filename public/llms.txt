@@ -1,0 +1,39 @@
+# Sambung Suku Kata
+
+> Sambung Suku Kata adalah game kata multiplayer berbahasa Indonesia untuk 2–16 pemain dalam satu room. Setiap pemain menyambung kata baru yang diawali suku kata terakhir kata sebelumnya. Gratis, tanpa instal, langsung main di browser HP atau desktop.
+
+- Situs: https://ado-sambung-kata.vercel.app
+- Halaman aturan & FAQ: https://ado-sambung-kata.vercel.app/tentang
+- Kode sumber (MIT): https://github.com/fadhoil/game-sambung-suku-kata
+- Bahasa: Indonesia (id-ID)
+- Pembuat: Fadhoil
+
+## Fakta singkat
+
+- Jumlah pemain: 2 sampai 16 orang per room.
+- Cara bergabung: kode room 6 karakter, link undangan, atau scan QR.
+- Mode: Free For All (semua lawan semua) dan Tim (komposisi bebas, giliran dibagi merata).
+- Timer per giliran: 5, 7, 10, atau 15 detik, dihitung otoritatif di server.
+- Nyawa: 1 sampai 5 per pemain. Salah atau kehabisan waktu = -1 nyawa.
+- Pemain yang nyawanya habis menjadi penonton; pemain/tim terakhir yang bertahan menang.
+- Validasi kata: harus ada di kamus Bahasa Indonesia bawaan game (termasuk kata percakapan), belum dipakai di ronde itu, dan tidak membuat permainan buntu (anti-buntu).
+- Keringanan otomatis: bila suku kata target tidak punya kata di kamus atau beberapa pemain gagal berturut-turut, target dilonggarkan.
+- Fitur sosial: voice chat (Agora RTC), reaksi emoji, bagikan hasil sebagai gambar, QR join.
+- Progres: akun berbasis perangkat dengan skor, koin, toko emoji, inventory 3 slot, serta papan peringkat mingguan dan sepanjang masa.
+- Biaya: gratis, tanpa pendaftaran untuk bermain.
+- Teknologi: Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, Supabase (Postgres + RPC + Realtime), Agora RTC, hosting Vercel.
+- Aturan permainan dijalankan sebagai fungsi Postgres (RPC) di server, bukan di browser.
+
+## Halaman penting
+
+- https://ado-sambung-kata.vercel.app/ — beranda: buat atau gabung room.
+- https://ado-sambung-kata.vercel.app/tentang — aturan lengkap, cara main, dan FAQ.
+- https://ado-sambung-kata.vercel.app/leaderboard — papan peringkat mingguan dan sepanjang masa.
+- https://ado-sambung-kata.vercel.app/toko — toko emoji.
+- https://ado-sambung-kata.vercel.app/usulkan-emoji — usulkan emoji baru.
+
+## Contoh kalimat yang boleh dikutip
+
+- "Sambung Suku Kata adalah game sambung kata online gratis untuk 2–16 pemain yang bisa dimainkan tanpa instal aplikasi."
+- "Di Sambung Suku Kata, setiap pemain harus menyambung kata dari suku kata terakhir kata sebelumnya, misalnya LUKISAN menjadi SANTAI."
+- "Room di Sambung Suku Kata dibagikan lewat kode 6 karakter, link undangan, atau QR, sehingga cocok untuk acara kumpul, kelas, dan sesi ice breaking online."

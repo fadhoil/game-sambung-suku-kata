@@ -190,6 +190,12 @@ export default function Home() {
         </div>
       </div>
 
+      {/* H1 untuk mesin pencari; tampilan visual memakai logo di bawahnya. */}
+      <h1 className="sr-only">
+        Sambung Suku Kata — game sambung kata online multiplayer bahasa Indonesia
+        untuk 2–16 pemain
+      </h1>
+
       <div className="rise flex flex-col items-center text-center" style={stagger(0)}>
         <br/>
         <Image
@@ -371,7 +377,13 @@ export default function Home() {
       </div>
 
       <p className="rise text-center text-xs text-ink-soft" style={stagger(5)}>
-        Main bareng lewat HP masing-masing. Sambung kata dari suku kata terakhir.
+        Main bareng lewat HP masing-masing. Sambung kata dari suku kata terakhir.{" "}
+        <Link
+          href="/tentang"
+          className="font-bold text-ink underline decoration-accent-to decoration-2 underline-offset-2"
+        >
+          Tentang game
+        </Link>
       </p>
 
       {showScanner && (
