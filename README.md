@@ -22,7 +22,7 @@ Tanpa instal. Buka di HP, buat room, bagikan kode atau QR ke teman, lalu mulai.
 
 **Sosial**
 - 📷 Gabung lewat **kode room**, **link undangan**, atau **scan QR**
-- 🎙️ **Voice chat** di lobi dan halaman hasil (LiveKit)
+- 🎙️ **Voice chat** di lobi dan halaman hasil (Agora RTC)
 - 😀 **Reaksi emoji** melayang di room, bisa memakai emoji dari toko
 - 📤 **Bagikan hasil** sebagai gambar (WhatsApp, Instagram, dll.)
 
@@ -61,7 +61,7 @@ Tanpa instal. Buka di HP, buat room, bagikan kode atau QR ke teman, lalu mulai.
 | Framework | Next.js 14 (App Router), React 18, TypeScript (strict) |
 | Styling | Tailwind CSS 3, font Plus Jakarta Sans |
 | Backend | Supabase: Postgres + RPC (logika game), Realtime, Storage |
-| Suara | LiveKit (audio-only) |
+| Suara | Agora RTC (audio-only, `agora-rtc-sdk-ng` + `agora-token`) |
 | Lainnya | `html5-qrcode`, `html-to-image`, Web Audio API |
 | Hosting | Vercel |
 
@@ -105,8 +105,10 @@ cp .env.example .env
 | `NEXT_PUBLIC_SUPABASE_URL` | Ya | URL project Supabase |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Ya | Anon key (dibatasi RLS) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Untuk toko emoji | **Rahasia, hanya server.** Jangan beri awalan `NEXT_PUBLIC_` |
-| `NEXT_PUBLIC_LIVEKIT_URL` | Untuk voice chat | `wss://…livekit.cloud` |
-| `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Untuk voice chat | **Rahasia, hanya server** |
+| `NEXT_PUBLIC_AGORA_APP_ID` | Untuk voice chat | App ID project Agora (tidak rahasia) |
+| `AGORA_APP_CERTIFICATE` | Untuk voice chat | **Rahasia, hanya server.** Dibuat setelah App Certificate diaktifkan |
+
+> **Voice chat (Agora).** Buat project di [console.agora.io](https://console.agora.io) — gratis 10.000 menit/bulan, tanpa kartu kredit. Buka **Project Management → Configure** dan aktifkan **App Certificate**, lalu salin App ID dan App Certificate ke `.env`. Token dibuat oleh route server `/api/agora-token` (dengan *string user account* = `playerId`), jadi App Certificate tidak pernah sampai ke browser. Menit Agora dihitung **per peserta di channel, termasuk pendengar**, jadi voice otomatis tersambung saat masuk lobi/hasil — pantau pemakaian di Agora Console agar kuota gratis tidak habis.
 
 ### 3. Isi kamus
 
@@ -178,7 +180,7 @@ Detail lengkap ada di [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Catatan
 
 - **Keamanan versi:** proyek memakai Next.js 14.2.15. Ada patch keamanan di jalur 14.2.x; disarankan upgrade (`npm install next@^14.2.33`) lalu `npm run build` ulang sebelum produksi.
-- **Audio di HP:** suara aktif setelah sentuhan pertama (aturan browser). Fullscreen API terbatas di iOS Safari.
+- **Audio di HP:** suara aktif setelah sentuhan pertama (aturan browser). Voice chat butuh HTTPS (izin mikrofon) dan menampilkan petunjuk "Ketuk layar untuk mengaktifkan suara" bila autoplay diblokir. Fullscreen API terbatas di iOS Safari.
 - **Akun berbasis perangkat:** akun tersimpan di browser; menghapus data browser berarti kehilangan akses ke akun tersebut.
 - Game ini untuk hiburan santai. Kamus sengaja memuat sebagian kata percakapan (non-baku) agar permainan lebih seru.
 
