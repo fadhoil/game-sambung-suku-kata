@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { toEmojiImage, readSoundDuration } from "@/lib/imageProcess";
+import { GIF_TOO_LARGE, GIF_UNSUPPORTED, toEmojiImage, readSoundDuration } from "@/lib/imageProcess";
 import {
   EMOJI_IMAGE_ACCEPT,
   EMOJI_IMAGE_MAX_BYTES,
@@ -61,8 +61,15 @@ export function useEmojiFiles() {
     try {
       const r = await toEmojiImage(f, EMOJI_IMAGE_MAX_SIDE, EMOJI_IMAGE_MAX_BYTES);
       setImage({ blob: r.blob, url: URL.createObjectURL(r.blob), width: r.width, height: r.height });
-    } catch {
-      setFileError("Gambar tidak bisa dibaca atau terlalu rumit. Coba gambar lain.");
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "";
+      setFileError(
+        code === GIF_TOO_LARGE
+          ? `GIF ${kb(f.size)} masih lebih dari ${kb(EMOJI_IMAGE_MAX_BYTES)} setelah dikecilkan otomatis. Coba GIF yang lebih pendek (mis. potong di ezgif.com), lalu unggah lagi.`
+          : code === GIF_UNSUPPORTED
+            ? `Browser ini belum bisa mengubah GIF animasi jadi WebP. Coba Chrome/Edge/Safari versi terbaru, atau unggah GIF di bawah ${kb(EMOJI_IMAGE_MAX_BYTES)}.`
+            : "Gambar tidak bisa dibaca atau terlalu rumit. Coba gambar lain."
+      );
     }
   }
 
@@ -103,8 +110,9 @@ export function useEmojiFiles() {
           aria-label="File gambar"
         />
         <p className="mt-1 text-[11px] text-ink-soft">
-          PNG/WebP/JPEG/GIF. Otomatis diperkecil (maks {EMOJI_IMAGE_MAX_SIDE}px, latar transparan tetap). GIF
-          animasi jadi gambar diam.
+          PNG/WebP/JPEG/GIF, otomatis diperkecil (maks {EMOJI_IMAGE_MAX_SIDE}px, latar transparan tetap). GIF
+          animasi yang lebih dari {kb(EMOJI_IMAGE_MAX_BYTES)} dikecilkan dan diubah jadi WebP animasi di browser,
+          jadi tetap bergerak dan tetap muat diunggah.
         </p>
         {image && (
           <div className="mt-2 flex items-center gap-3 rounded-2xl bg-bg-end/60 p-2">

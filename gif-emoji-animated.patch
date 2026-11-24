@@ -1,0 +1,86 @@
+diff --git a/src/components/EmojiFileFields.tsx b/src/components/EmojiFileFields.tsx
+index 828c08a..4094279 100644
+--- a/src/components/EmojiFileFields.tsx
++++ b/src/components/EmojiFileFields.tsx
+@@ -1,7 +1,7 @@
+ "use client";
+ 
+ import { useEffect, useState } from "react";
+-import { toEmojiImage, readSoundDuration } from "@/lib/imageProcess";
++import { GIF_TOO_LARGE, toEmojiImage, readSoundDuration } from "@/lib/imageProcess";
+ import {
+   EMOJI_IMAGE_ACCEPT,
+   EMOJI_IMAGE_MAX_BYTES,
+@@ -61,8 +61,12 @@ export function useEmojiFiles() {
+     try {
+       const r = await toEmojiImage(f, EMOJI_IMAGE_MAX_SIDE, EMOJI_IMAGE_MAX_BYTES);
+       setImage({ blob: r.blob, url: URL.createObjectURL(r.blob), width: r.width, height: r.height });
+-    } catch {
+-      setFileError("Gambar tidak bisa dibaca atau terlalu rumit. Coba gambar lain.");
++    } catch (e) {
++      setFileError(
++        e instanceof Error && e.message === GIF_TOO_LARGE
++          ? `GIF ${kb(f.size)} melebihi batas ${kb(EMOJI_IMAGE_MAX_BYTES)}. Perkecil dulu GIF-nya (mis. lewat ezgif.com), lalu unggah lagi.`
++          : "Gambar tidak bisa dibaca atau terlalu rumit. Coba gambar lain."
++      );
+     }
+   }
+ 
+@@ -103,8 +107,10 @@ export function useEmojiFiles() {
+           aria-label="File gambar"
+         />
+         <p className="mt-1 text-[11px] text-ink-soft">
+-          PNG/WebP/JPEG/GIF. Otomatis diperkecil (maks {EMOJI_IMAGE_MAX_SIDE}px, latar transparan tetap). GIF
+-          animasi jadi gambar diam.
++          PNG/WebP/JPEG/GIF. PNG/WebP/JPEG otomatis diperkecil (maks {EMOJI_IMAGE_MAX_SIDE}px, latar
++          transparan tetap). GIF animasi tetap bergerak: diunggah apa adanya, jadi ukurannya harus di bawah
++          {" "}
++          {kb(EMOJI_IMAGE_MAX_BYTES)}.
+         </p>
+         {image && (
+           <div className="mt-2 flex items-center gap-3 rounded-2xl bg-bg-end/60 p-2">
+diff --git a/src/lib/imageProcess.ts b/src/lib/imageProcess.ts
+index e7047f0..4324c1a 100644
+--- a/src/lib/imageProcess.ts
++++ b/src/lib/imageProcess.ts
+@@ -1,13 +1,39 @@
+ /**
+  * Perkecil gambar emoji di browser sebelum diunggah: sisi terpanjang <= maxSide,
+  * transparansi tetap, keluaran WebP (atau PNG bila browser tak bisa encode WebP).
+- * Gambar animasi (GIF) menjadi gambar diam (frame pertama).
++ *
++ * GIF animasi TIDAK digambar ulang ke canvas, karena canvas hanya bisa memuat satu
++ * frame sehingga animasinya hilang. GIF yang ukurannya masih di bawah maxBytes
++ * diteruskan apa adanya (tetap bergerak); GIF yang lebih besar ditolak dengan galat
++ * GIF_TOO_LARGE agar pemiliknya bisa memperkecil sendiri, bukan dibekukan diam-diam.
+  */
++
++/** Galat khusus: GIF melebihi maxBytes sehingga tidak bisa diteruskan apa adanya. */
++export const GIF_TOO_LARGE = "GIF_TOO_LARGE";
++
++/** GIF dikenali dari MIME atau ekstensi (sebagian browser mengosongkan file.type). */
++function isGif(file: File) {
++  return file.type === "image/gif" || /\.gif$/i.test(file.name);
++}
++
++/** Dimensi asli file (untuk GIF: frame pertama) tanpa menggambar ulang ke canvas. */
++async function readImageSize(file: File) {
++  const bitmap = await createImageBitmap(file);
++  const size = { width: bitmap.width, height: bitmap.height };
++  bitmap.close?.();
++  return size;
++}
++
+ export async function toEmojiImage(
+   file: File,
+   maxSide: number,
+   maxBytes: number
+ ): Promise<{ blob: Blob; width: number; height: number }> {
++  if (isGif(file)) {
++    if (file.size > maxBytes) throw new Error(GIF_TOO_LARGE);
++    return { blob: file, ...(await readImageSize(file)) };
++  }
++
+   const bitmap = await createImageBitmap(file);
+   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+   const width = Math.max(1, Math.round(bitmap.width * scale));

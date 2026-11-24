@@ -1,0 +1,286 @@
+diff --git a/next.config.mjs b/next.config.mjs
+index d5456a1..6850f47 100644
+--- a/next.config.mjs
++++ b/next.config.mjs
+@@ -1,6 +1,18 @@
+ /** @type {import('next').NextConfig} */
+ const nextConfig = {
+   reactStrictMode: true,
++  webpack: (config) => {
++    // wasm-webp mengirim build ESM (dist/esm) tanpa penanda .mjs; tanpa aturan ini
++    // webpack menganggapnya CommonJS sehingga `import` di dalamnya gagal di-minify.
++    config.module.rules.push({
++      test: /[\\/]node_modules[\\/]wasm-webp[\\/]dist[\\/]esm[\\/].*\.js$/,
++      type: "javascript/esm",
++    });
++    // Glue wasm menyiapkan jalur Node (`await import('module')`) yang tidak pernah
++    // dijalankan di browser; beri modul kosong agar webpack tidak gagal resolve.
++    config.resolve.fallback = { ...config.resolve.fallback, module: false };
++    return config;
++  },
+ };
+ 
+ export default nextConfig;
+diff --git a/package-lock.json b/package-lock.json
+index 0814724..f63a58d 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -15,7 +15,8 @@
+         "html5-qrcode": "^2.3.8",
+         "next": "14.2.15",
+         "react": "^18.3.1",
+-        "react-dom": "^18.3.1"
++        "react-dom": "^18.3.1",
++        "wasm-webp": "^0.1.0"
+       },
+       "devDependencies": {
+         "@types/node": "^20.14.9",
+@@ -2310,6 +2311,12 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/wasm-webp": {
++      "version": "0.1.0",
++      "resolved": "https://registry.npmjs.org/wasm-webp/-/wasm-webp-0.1.0.tgz",
++      "integrity": "sha512-Z1Sop+mLKogzDK3vJzSPfSxRF1yj/zbmn+XJuU9+7fvarxcuGhGkeLBqJr5H8LdgWuAwEKuZelCzx7ujztfhVQ==",
++      "license": "MIT"
++    },
+     "node_modules/web-streams-polyfill": {
+       "version": "3.3.3",
+       "resolved": "https://registry.npmjs.org/web-streams-polyfill/-/web-streams-polyfill-3.3.3.tgz",
+diff --git a/package.json b/package.json
+index 6e7f47c..8e8b673 100644
+--- a/package.json
++++ b/package.json
+@@ -16,7 +16,8 @@
+     "html5-qrcode": "^2.3.8",
+     "next": "14.2.15",
+     "react": "^18.3.1",
+-    "react-dom": "^18.3.1"
++    "react-dom": "^18.3.1",
++    "wasm-webp": "^0.1.0"
+   },
+   "devDependencies": {
+     "@types/node": "^20.14.9",
+diff --git a/src/components/EmojiFileFields.tsx b/src/components/EmojiFileFields.tsx
+index 4094279..aee5ac2 100644
+--- a/src/components/EmojiFileFields.tsx
++++ b/src/components/EmojiFileFields.tsx
+@@ -1,7 +1,7 @@
+ "use client";
+ 
+ import { useEffect, useState } from "react";
+-import { GIF_TOO_LARGE, toEmojiImage, readSoundDuration } from "@/lib/imageProcess";
++import { GIF_TOO_LARGE, GIF_UNSUPPORTED, toEmojiImage, readSoundDuration } from "@/lib/imageProcess";
+ import {
+   EMOJI_IMAGE_ACCEPT,
+   EMOJI_IMAGE_MAX_BYTES,
+@@ -62,10 +62,13 @@ export function useEmojiFiles() {
+       const r = await toEmojiImage(f, EMOJI_IMAGE_MAX_SIDE, EMOJI_IMAGE_MAX_BYTES);
+       setImage({ blob: r.blob, url: URL.createObjectURL(r.blob), width: r.width, height: r.height });
+     } catch (e) {
++      const code = e instanceof Error ? e.message : "";
+       setFileError(
+-        e instanceof Error && e.message === GIF_TOO_LARGE
+-          ? `GIF ${kb(f.size)} melebihi batas ${kb(EMOJI_IMAGE_MAX_BYTES)}. Perkecil dulu GIF-nya (mis. lewat ezgif.com), lalu unggah lagi.`
+-          : "Gambar tidak bisa dibaca atau terlalu rumit. Coba gambar lain."
++        code === GIF_TOO_LARGE
++          ? `GIF ${kb(f.size)} masih lebih dari ${kb(EMOJI_IMAGE_MAX_BYTES)} setelah dikecilkan otomatis. Coba GIF yang lebih pendek (mis. potong di ezgif.com), lalu unggah lagi.`
++          : code === GIF_UNSUPPORTED
++            ? `Browser ini belum bisa mengubah GIF animasi jadi WebP. Coba Chrome/Edge/Safari versi terbaru, atau unggah GIF di bawah ${kb(EMOJI_IMAGE_MAX_BYTES)}.`
++            : "Gambar tidak bisa dibaca atau terlalu rumit. Coba gambar lain."
+       );
+     }
+   }
+@@ -107,10 +110,9 @@ export function useEmojiFiles() {
+           aria-label="File gambar"
+         />
+         <p className="mt-1 text-[11px] text-ink-soft">
+-          PNG/WebP/JPEG/GIF. PNG/WebP/JPEG otomatis diperkecil (maks {EMOJI_IMAGE_MAX_SIDE}px, latar
+-          transparan tetap). GIF animasi tetap bergerak: diunggah apa adanya, jadi ukurannya harus di bawah
+-          {" "}
+-          {kb(EMOJI_IMAGE_MAX_BYTES)}.
++          PNG/WebP/JPEG/GIF, otomatis diperkecil (maks {EMOJI_IMAGE_MAX_SIDE}px, latar transparan tetap). GIF
++          animasi yang lebih dari {kb(EMOJI_IMAGE_MAX_BYTES)} dikecilkan dan diubah jadi WebP animasi di browser,
++          jadi tetap bergerak dan tetap muat diunggah.
+         </p>
+         {image && (
+           <div className="mt-2 flex items-center gap-3 rounded-2xl bg-bg-end/60 p-2">
+diff --git a/src/lib/imageProcess.ts b/src/lib/imageProcess.ts
+index 4324c1a..64d1c80 100644
+--- a/src/lib/imageProcess.ts
++++ b/src/lib/imageProcess.ts
+@@ -2,14 +2,34 @@
+  * Perkecil gambar emoji di browser sebelum diunggah: sisi terpanjang <= maxSide,
+  * transparansi tetap, keluaran WebP (atau PNG bila browser tak bisa encode WebP).
+  *
+- * GIF animasi TIDAK digambar ulang ke canvas, karena canvas hanya bisa memuat satu
+- * frame sehingga animasinya hilang. GIF yang ukurannya masih di bawah maxBytes
+- * diteruskan apa adanya (tetap bergerak); GIF yang lebih besar ditolak dengan galat
+- * GIF_TOO_LARGE agar pemiliknya bisa memperkecil sendiri, bukan dibekukan diam-diam.
++ * GIF animasi TIDAK digambar ulang ke canvas biasa, karena canvas hanya bisa memuat
++ * satu frame sehingga animasinya hilang:
++ * - GIF yang ukurannya masih di bawah maxBytes diteruskan apa adanya (paling ringan).
++ * - GIF yang lebih besar dibongkar frame-nya (WebCodecs ImageDecoder), diperkecil, lalu
++ *   di-encode ulang menjadi WebP animasi (libwebp lewat wasm). Animasinya tetap jalan
++ *   tanpa perlu diperkecil manual oleh pemiliknya.
+  */
+ 
+-/** Galat khusus: GIF melebihi maxBytes sehingga tidak bisa diteruskan apa adanya. */
++/** Galat khusus: GIF animasi tetap melebihi maxBytes walau sudah diperkecil otomatis. */
+ export const GIF_TOO_LARGE = "GIF_TOO_LARGE";
++/** Galat khusus: browser ini tidak punya ImageDecoder, jadi frame GIF tak bisa dibongkar. */
++export const GIF_UNSUPPORTED = "GIF_UNSUPPORTED";
++
++/** Batas jumlah frame yang diproses (GIF panjang diambil sebagian, durasinya digabung). */
++const MAX_GIF_FRAMES = 40;
++/**
++ * Percobaan encode berurutan sampai ukurannya muat di bawah maxBytes: turunkan kualitas,
++ * lalu (bila masih terlalu besar) ambil sebagian frame dan durasinya digabung.
++ */
++const WEBP_ATTEMPTS: { quality: number; keep: number }[] = [
++  { quality: 80, keep: 1 },
++  { quality: 60, keep: 1 },
++  { quality: 45, keep: 1 },
++  { quality: 55, keep: 2 },
++  { quality: 35, keep: 2 },
++  { quality: 45, keep: 3 },
++  { quality: 30, keep: 4 },
++];
+ 
+ /** GIF dikenali dari MIME atau ekstensi (sebagian browser mengosongkan file.type). */
+ function isGif(file: File) {
+@@ -24,14 +44,131 @@ async function readImageSize(file: File) {
+   return size;
+ }
+ 
++/** Satu frame GIF yang sudah diperkecil: piksel RGBA + durasi tampil (milidetik). */
++interface AnimFrame {
++  data: Uint8Array;
++  duration: number;
++}
++
++/** Bagian dari WebCodecs ImageDecoder yang kita pakai (tanpa bergantung tipe lib.dom). */
++interface DecodedFrame {
++  image: {
++    displayWidth: number;
++    displayHeight: number;
++    duration: number | null;
++    close(): void;
++  };
++}
++interface ImageDecoderLike {
++  tracks: { ready: Promise<void>; selectedTrack: { frameCount: number } | null };
++  decode(opts: { frameIndex: number }): Promise<DecodedFrame>;
++  close(): void;
++}
++type ImageDecoderCtor = new (init: { data: ArrayBuffer; type: string }) => ImageDecoderLike;
++
++function imageDecoderCtor(): ImageDecoderCtor | null {
++  const ctor = (globalThis as { ImageDecoder?: ImageDecoderCtor }).ImageDecoder;
++  return typeof ctor === "function" ? ctor : null;
++}
++
++/**
++ * Bongkar GIF menjadi frame RGBA yang sudah diperkecil (sisi terpanjang <= maxSide).
++ * Frame yang dilewati (bila GIF-nya sangat panjang) digabung ke durasi frame sebelumnya.
++ */
++async function gifToFrames(file: File, maxSide: number) {
++  const Decoder = imageDecoderCtor();
++  if (!Decoder) throw new Error(GIF_UNSUPPORTED);
++
++  const decoder = new Decoder({ data: await file.arrayBuffer(), type: "image/gif" });
++  try {
++    await decoder.tracks.ready;
++    const total = Math.max(1, decoder.tracks.selectedTrack?.frameCount ?? 1);
++    const stride = Math.max(1, Math.ceil(total / MAX_GIF_FRAMES));
++
++    const canvas = document.createElement("canvas");
++    const ctx = canvas.getContext("2d", { willReadFrequently: true });
++    if (!ctx) throw new Error("NO_CANVAS");
++
++    const frames: AnimFrame[] = [];
++    let width = 0;
++    let height = 0;
++
++    for (let i = 0; i < total; i += stride) {
++      const { image } = await decoder.decode({ frameIndex: i });
++      try {
++        if (!width) {
++          const scale = Math.min(1, maxSide / Math.max(image.displayWidth, image.displayHeight));
++          width = Math.max(1, Math.round(image.displayWidth * scale));
++          height = Math.max(1, Math.round(image.displayHeight * scale));
++          canvas.width = width;
++          canvas.height = height;
++        }
++        ctx.clearRect(0, 0, width, height);
++        ctx.drawImage(image as unknown as CanvasImageSource, 0, 0, width, height);
++        const rgba = ctx.getImageData(0, 0, width, height).data;
++        const ms = Math.round((image.duration ?? 100_000) / 1000);
++        frames.push({
++          data: new Uint8Array(rgba.buffer.slice(0)),
++          duration: Math.min(10_000, Math.max(20, ms) * stride),
++        });
++      } finally {
++        image.close();
++      }
++    }
++
++    if (!frames.length) throw new Error(GIF_UNSUPPORTED);
++    return { frames, width, height };
++  } finally {
++    decoder.close();
++  }
++}
++
++/** Ambil setiap frame ke-`keep`, durasinya digabung supaya tempo animasi tetap sama. */
++function thinFrames(frames: AnimFrame[], keep: number): AnimFrame[] {
++  if (keep <= 1) return frames;
++  const out: AnimFrame[] = [];
++  for (let i = 0; i < frames.length; i += keep) {
++    let duration = 0;
++    for (let j = i; j < Math.min(i + keep, frames.length); j++) duration += frames[j].duration;
++    out.push({ data: frames[i].data, duration });
++  }
++  return out;
++}
++
++/** Encode frame RGBA menjadi WebP animasi; dikecilkan bertahap sampai muat di bawah maxBytes. */
++async function encodeAnimatedWebp(frames: AnimFrame[], width: number, height: number, maxBytes: number) {
++  const { encodeAnimation } = await import("wasm-webp");
++  let best: Blob | null = null;
++  for (const { quality, keep } of WEBP_ATTEMPTS) {
++    const bytes = await encodeAnimation(
++      width,
++      height,
++      true,
++      thinFrames(frames, keep).map((f) => ({ data: f.data, duration: f.duration, config: { lossless: 0, quality } }))
++    );
++    if (!bytes) continue;
++    const blob = new Blob([bytes as BlobPart], { type: "image/webp" });
++    if (!best || blob.size < best.size) best = blob;
++    if (blob.size <= maxBytes) return blob;
++  }
++  return best;
++}
++
+ export async function toEmojiImage(
+   file: File,
+   maxSide: number,
+   maxBytes: number
+ ): Promise<{ blob: Blob; width: number; height: number }> {
+   if (isGif(file)) {
+-    if (file.size > maxBytes) throw new Error(GIF_TOO_LARGE);
+-    return { blob: file, ...(await readImageSize(file)) };
++    // GIF kecil: diteruskan apa adanya, animasi & ukurannya utuh tanpa encode ulang.
++    if (file.size <= maxBytes) return { blob: file, ...(await readImageSize(file)) };
++
++    // GIF besar: perkecil + ubah jadi WebP animasi supaya muat dan tetap bergerak.
++    const { frames, width, height } = await gifToFrames(file, maxSide);
++    const blob = await encodeAnimatedWebp(frames, width, height, maxBytes);
++    if (!blob) throw new Error(GIF_UNSUPPORTED);
++    if (blob.size > maxBytes) throw new Error(GIF_TOO_LARGE);
++    return { blob, width, height };
+   }
+ 
+   const bitmap = await createImageBitmap(file);
