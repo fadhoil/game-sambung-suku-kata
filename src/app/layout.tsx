@@ -12,6 +12,8 @@ import {
   SITE_URL,
   absoluteUrl,
 } from "@/lib/seo";
+import Script from 'next/script';
+import { WebMcpProvider } from '@/components/WebMcpProvider';
 
 const display = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -148,7 +150,6 @@ const siteJsonLd = {
   ],
 };
 
-import Script from 'next/script';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -159,12 +160,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9607539444470683"
           crossOrigin="anonymous"
         ></script> */}
-        <Script
-          id="adsense-init"
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9607539444470683"
-          strategy="lazyOnload"
-          crossOrigin="anonymous"
-        />
         <JsonLd id="jsonld-site" data={siteJsonLd} />
       </head>
       <body>
@@ -174,7 +169,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <i />
         </div>
         <SoundProvider />
+        <WebMcpProvider />
         {children}
+        <Script
+          id="adsense-init"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9607539444470683"
+          strategy="lazyOnload"
+          crossOrigin="anonymous"
+        />
       </body>
     </html>
   );
