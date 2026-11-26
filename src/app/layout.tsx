@@ -75,7 +75,7 @@ export const viewport: Viewport = {
   themeColor: "#f8f9fb",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // maximumScale: 1,
   // Android Chrome: saat keyboard muncul, kecilkan area konten (bukan menimpa),
   // supaya panel kata & input tetap terlihat.
   interactiveWidget: "resizes-content",
@@ -148,15 +148,23 @@ const siteJsonLd = {
   ],
 };
 
+import Script from 'next/script';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="id" className={display.variable}>
       <head>
-        <script
+        {/* <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9607539444470683"
           crossOrigin="anonymous"
-        ></script>
+        ></script> */}
+        <Script
+          id="adsense-init"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9607539444470683"
+          strategy="lazyOnload"
+          crossOrigin="anonymous"
+        />
         <JsonLd id="jsonld-site" data={siteJsonLd} />
       </head>
       <body>

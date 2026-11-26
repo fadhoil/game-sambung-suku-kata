@@ -203,6 +203,7 @@ export default function Home() {
           alt="Sambung Suku Kata"
           width={1536}
           height={1024}
+          sizes="(max-width: 640px) 256px, 288px"
           priority
           className="h-auto w-64 max-w-full drop-shadow-sm sm:w-72"
         />
@@ -263,7 +264,7 @@ export default function Home() {
               key={a}
               onClick={() => setAvatar(a)}
               className={[
-                "h-11 w-11 shrink-0 snap-start rounded-xl text-xl transition active:scale-90",
+                "h-11 w-11 shrink-0 snap-start rounded-xl text-xl transition-transform active:scale-90",
                 avatar === a ? "avatar-pop bg-accent-to/20 ring-2 ring-accent-to" : "bg-bg-end",
               ].join(" ")}
               aria-label={`Pilih avatar ${a}`}
